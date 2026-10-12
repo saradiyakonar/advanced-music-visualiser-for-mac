@@ -8,10 +8,14 @@ private final class KeyWindow: NSWindow {
     var onEscape: (() -> Void)?
     var onLyricsKey: (() -> Void)?
     var onLyricsNudge: ((Double) -> Void)?
+    var onCommand: ((NowPlayingService.Command) -> Void)?
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { onEscape?() }
+        else if event.keyCode == 49, !event.isARepeat { onCommand?(.playPause) }   // space
+        else if event.keyCode == 124, !event.isARepeat { onCommand?(.next) }       // →
+        else if event.keyCode == 123, !event.isARepeat { onCommand?(.previous) }   // ←
         else if event.charactersIgnoringModifiers?.lowercased() == "l", !event.isARepeat { onLyricsKey?() }
         else if event.charactersIgnoringModifiers == "[" { onLyricsNudge?(0.1) }   // lyrics earlier
         else if event.charactersIgnoringModifiers == "]" { onLyricsNudge?(-0.1) }  // lyrics later
@@ -24,6 +28,9 @@ private final class KeyWindow: NSWindow {
 final class VisualiserWindowController {
     var onClose: (() -> Void)?
     var onToggleLyrics: (() -> Void)?
+    var onCommand: ((NowPlayingService.Command) -> Void)?
+    /// 0 = soft, 1 = energetic; set every frame from the song's tempo.
+    private var intensity: Float = 1
     var onLyricsNudge: ((Double) -> Void)?
     private(set) var lyricsMode = false
     private let lyricsView: LyricsView
@@ -90,6 +97,7 @@ final class VisualiserWindowController {
         window.onEscape = { [weak self] in self?.onClose?() }
         window.onLyricsKey = { [weak self] in self?.onToggleLyrics?() }
         window.onLyricsNudge = { [weak self] d in self?.onLyricsNudge?(d) }
+        window.onCommand = { [weak self] c in self?.onCommand?(c) }
     }
 
     var isAvailable: Bool { renderer != nil }
@@ -186,7 +194,12 @@ final class VisualiserWindowController {
 
     func register(_ beat: BeatEvent) {
         renderer?.animator.register(beat)
-        if lyricsMode { lyricsView.thump(big: beat.isBigHit) }
+        if lyricsMode { lyricsView.thump(big: beat.isBigHit, intensity: intensity) }
+    }
+
+    func setIntensity(_ i: Float) {
+        intensity = i
+        renderer?.animator.intensity = i
     }
 
     /// Lyrics replace the cover full screen; the edge glow stays.

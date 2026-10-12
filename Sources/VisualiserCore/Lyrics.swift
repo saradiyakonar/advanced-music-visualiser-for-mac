@@ -163,6 +163,8 @@ public struct WordStyle: Equatable, Sendable {
     public var block: Bool
     /// SF Symbol name shown next to the word.
     public var icon: String?
+    /// Emoji shown next to the word (only when there's no icon).
+    public var emoji: String?
 }
 
 /// Per-word look for the lyrics screen (after the reference video): mixed weights,
@@ -192,12 +194,38 @@ public enum WordStyler {
         "world": "globe.americas.fill", "home": "house.fill", "house": "house.fill",
     ]
 
+    /// Emoji for common lyric words. Built from pairs so a repeated word can't crash at launch.
+    public static let emoji: [String: String] = Dictionary([
+        ("baby", "👶"), ("kiss", "💋"), ("party", "🥳"), ("dance", "💃"), ("dancing", "💃"),
+        ("drink", "🍸"), ("drinks", "🍸"), ("drunk", "🥴"), ("high", "🚀"), ("fly", "🕊️"),
+        ("flying", "✈️"), ("plane", "✈️"), ("rich", "💰"), ("diamond", "💎"), ("diamonds", "💎"),
+        ("ice", "🧊"), ("cold", "🥶"), ("hot", "🥵"), ("crazy", "🤪"), ("smile", "😊"),
+        ("happy", "😄"), ("sad", "😢"), ("angry", "😤"), ("mad", "😤"), ("devil", "😈"),
+        ("angel", "😇"), ("god", "🙏"), ("pray", "🙏"), ("lord", "🙏"), ("ghost", "👻"),
+        ("dead", "💀"), ("die", "💀"), ("bang", "💥"), ("boom", "💥"), ("win", "🏆"),
+        ("winning", "🏆"), ("gold", "🥇"), ("rose", "🌹"), ("roses", "🌹"), ("flower", "🌸"),
+        ("ocean", "🌊"), ("sea", "🌊"), ("wave", "🌊"), ("waves", "🌊"), ("beach", "🏖️"),
+        ("summer", "☀️"), ("snow", "❄️"), ("winter", "❄️"), ("storm", "⛈️"), ("lightning", "⚡"),
+        ("electric", "⚡"), ("rock", "🤘"), ("hug", "🫂"), ("friends", "🫂"), ("hands", "🙌"),
+        ("clap", "👏"), ("goodbye", "👋"), ("bye", "👋"), ("hello", "👋"), ("alone", "🥀"),
+        ("lonely", "🥀"), ("broken", "💔"), ("heartbreak", "💔"), ("sleep", "😴"), ("tired", "😴"),
+        ("wake", "⏰"), ("late", "⏰"), ("mind", "🧠"), ("think", "🤔"), ("thinking", "🤔"),
+        ("secret", "🤫"), ("quiet", "🤫"), ("loud", "📢"), ("scream", "😱"), ("run", "🏃"),
+        ("running", "🏃"), ("road", "🛣️"), ("city", "🌆"), ("food", "🍔"), ("eat", "🍽️"),
+        ("cake", "🎂"), ("birthday", "🎂"), ("smoke", "💨"), ("smoking", "💨"), ("sky", "🌌"),
+        ("heaven", "☁️"), ("magic", "🪄"), ("game", "🎮"), ("text", "📱"), ("camera", "📸"),
+        ("photo", "📸"), ("picture", "📸"), ("door", "🚪"), ("key", "🔑"), ("lock", "🔒"),
+        ("free", "🕊️"), ("freedom", "🕊️"), ("cool", "😎"), ("shine", "✨"), ("shining", "✨"),
+        ("gone", "💨"), ("forever", "♾️"), ("ring", "💍"), ("married", "💍"), ("rain", "🌧️"),
+    ], uniquingKeysWith: { first, _ in first })
+
     public static func style(for word: String, index: Int) -> WordStyle {
         let h = UInt32(truncatingIfNeeded: (index &+ 1) &* 2_654_435_761)
         let weights: [WordStyle.Weight] = [.heavy, .bold, .semibold, .regular]
         let key = word.lowercased().filter(\.isLetter)
+        let icon = icons[key]
         return WordStyle(weight: weights[Int((h >> 7) % 4)], italic: (h >> 13) % 5 == 0,
-                         block: (h >> 3) % 10 < 3, icon: icons[key])
+                         block: (h >> 3) % 10 < 3, icon: icon, emoji: icon == nil ? emoji[key] : nil)
     }
 
     public static func colour(forWordIndex i: Int, time: Double, palette: [RGB]) -> RGB {

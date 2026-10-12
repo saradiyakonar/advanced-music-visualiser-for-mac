@@ -21,6 +21,7 @@ final class AppController {
     private let compensator = LatencyCompensator()
     private let syncStore = SyncOffsetStore(store: UserDefaults.standard)
     private let defaults = UserDefaults.standard
+    private let keepAwake = KeepAwake()
 
     private var window: VisualiserWindowController?
     private var frameTimer: Timer?
@@ -49,8 +50,10 @@ final class AppController {
         w.onClose = { [weak self] in self?.stopVisualiser() }
         w.onToggleLyrics = { [weak self] in self?.toggleLyrics() }
         w.onLyricsNudge = { [weak self] d in self?.nudgeLyrics(d) }
+        w.onCommand = { [weak self] c in self?.send(c) }
         w.setLevelsProvider { [weak self] in self?.compensator.levels(at: CACurrentMediaTime()) }
         window = w
+        keepAwake.setVisualiserOpen(true)
         output = OutputLatency.current()
         updateDelay()
         w.show()
@@ -64,7 +67,11 @@ final class AppController {
             if self.tapState == .idle, let t = self.nowPlaying.current, now - self.lastTapAttempt > 3 {
                 self.ensureTap(bundleID: t.app.bundleID)
             }
-            for beat in self.compensator.due(upTo: now) { w.register(beat) }
+            for beat in self.compensator.due(upTo: now) {
+                self.mood.register(beat)
+                w.register(beat)
+            }
+            w.setIntensity(self.mood.intensity(at: now))
             if w.lyricsMode, let tl = self.timeline, let clock = self.nowPlaying.clock {
                 let pos = clock.position(at: now, outputDelay: self.compensator.delay) + self.lyricsOffset
                 w.updateLyrics(words: tl.visible(at: pos), time: now)
@@ -84,6 +91,7 @@ final class AppController {
         _ = compensator.due(upTo: .infinity)
         window?.close()
         window = nil
+        keepAwake.setVisualiserOpen(false)
     }
 
     // MARK: - Now playing
@@ -125,6 +133,24 @@ final class AppController {
 
         // Start listening as soon as a song is loaded (even paused), so play reacts instantly.
         ensureTap(bundleID: track.app.bundleID)
+    }
+
+    // MARK: - Playback controls and animation style
+
+    func send(_ command: NowPlayingService.Command) { nowPlaying.send(command) }
+
+    private lazy var mood: MoodTracker = {
+        var m = MoodTracker()
+        m.style = animationStyle
+        return m
+    }()
+
+    var animationStyle: AnimationStyle {
+        get { AnimationStyle(rawValue: defaults.string(forKey: "animation.style") ?? "") ?? .auto }
+        set {
+            defaults.set(newValue.rawValue, forKey: "animation.style")
+            mood.style = newValue
+        }
     }
 
     // MARK: - Lyrics

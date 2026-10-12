@@ -55,7 +55,9 @@ enum Shaders {
     // and drifting over time and with each beat. The dominant colour gets the widest band.
     float3 edgeColour(constant Uniforms& u, float s) {
         int n = int(clamp(u.colourCount, 1.0, 4.0));
-        float x = fract(s * 2.0 + u.flow + u.time * 0.02) * float(n);
+        // Each colour appears once around the screen and the ring keeps rotating
+        // (a full turn every ~20 s), nudged along by every beat.
+        float x = fract(s + u.time * 0.05 + u.flow * 0.5) * float(n);
         int i = int(floor(x)) % n;
         int j = (i + 1) % n;
         float f = fract(x);
@@ -66,6 +68,7 @@ enum Shaders {
     fragment float4 fmain(VOut in [[stage_in]],
                           constant Uniforms& u [[buffer(0)]],
                           texture2d<float> cover [[texture(0)]],
+                          texture2d<float> blurred [[texture(1)]],
                           sampler s [[sampler(0)]]) {
         float2 res = u.resolution;
         float minDim = min(res.x, res.y);
@@ -75,8 +78,8 @@ enum Shaders {
 
         float3 col = float3(5.0, 3.0, 10.0) / 255.0;    // #05030a
 
-        // Lyrics mode: the album art, heavily blurred (a low mip level), dark, filling the
-        // screen, slowly drifting and brightening on the beat, so the text never sits on blank black.
+        // Lyrics mode: the album art blurred (a low mip level), filling the screen, slowly
+        // drifting and brightening on the beat, so the text never sits on blank black.
         if (u.coverVisible < 0.5) {
             float aspect = res.x / res.y;
             float zoom = 1.12 + 0.04 * sin(u.time * 0.07) + 0.05 * u.edgeEnergy;
@@ -84,9 +87,12 @@ enum Shaders {
             uv.x *= aspect;                              // cover-fill: square art across a wide screen
             uv = uv / (zoom * aspect) + 0.5;
             uv += 0.03 * float2(sin(u.time * 0.05), cos(u.time * 0.043));
-            float3 art = cover.sample(s, uv, level(5.5)).rgb;
-            float vignette = 1.0 - 0.55 * length(xy / res - 0.5);
-            col = art * (0.26 + 0.16 * u.edgeEnergy) * vignette * u.dim;
+            // The cover pre-blurred once per track with a true Gaussian (see MetalRenderer),
+            // so this is smooth with no grain; the dither hides banding in dark gradients.
+            float3 art = blurred.sample(s, uv).rgb;
+            art += (hash11(xy.x * 0.731 + xy.y * 12.13 + fract(u.time)) - 0.5) / 255.0 * 1.5;
+            float vignette = 1.0 - 0.4 * length(xy / res - 0.5);
+            col = art * (0.45 + 0.15 * u.edgeEnergy) * vignette * u.dim;
         }
 
         // Glow behind the cover, blending the two album colours around it.
@@ -108,7 +114,8 @@ enum Shaders {
         float core = exp(-dEdge / (thickness * 0.12));
         float3 ec = edgeColour(u, perim);
         float3 edge = mix(ec, float3(1.0), core * 0.45);   // whiter right at the screen edge
-        float edgeA = clamp((body + haze) * (0.55 + 0.45 * u.edgeEnergy), 0.0, 1.0) * u.dim;
+        float breathe = 0.9 + 0.1 * sin(u.time * 1.6);   // light pulse even between beats
+        float edgeA = clamp((body + haze) * (0.55 + 0.45 * u.edgeEnergy) * breathe, 0.0, 1.0) * u.dim;
         col = mix(col, edge, edgeA);
 
         // Album cover, tilted by the beat.

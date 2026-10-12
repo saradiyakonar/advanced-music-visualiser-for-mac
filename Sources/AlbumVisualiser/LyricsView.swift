@@ -36,8 +36,9 @@ final class LyricsView: NSView {
             let padX = wordStyle.block ? fontSize * 0.14 : 0
             let padY = wordStyle.block ? fontSize * 0.04 : 0
 
-            let iconSide = wordStyle.icon == nil ? 0 : fontSize * 0.62
-            let gap = wordStyle.icon == nil ? 0 : fontSize * 0.22
+            let hasMark = wordStyle.icon != nil || wordStyle.emoji != nil
+            let iconSide = hasMark ? fontSize * 0.62 : 0
+            let gap = hasMark ? fontSize * 0.22 : 0
             size = CGSize(width: iconSide + gap + textSize.width + padX * 2, height: textSize.height + padY * 2)
             bounds = CGRect(origin: .zero, size: size)
 
@@ -49,6 +50,14 @@ final class LyricsView: NSView {
                 icon.frame = CGRect(x: 0, y: (size.height - iconSide) / 2, width: iconSide, height: iconSide)
                 icon.contentsScale = scale
                 addSublayer(icon)
+            } else if let e = wordStyle.emoji {
+                // Emoji keep their own colours; drawn as text, not tinted.
+                let el = CATextLayer()
+                el.string = NSAttributedString(string: e, attributes: [.font: NSFont.systemFont(ofSize: iconSide * 0.92)])
+                el.alignmentMode = .center
+                el.contentsScale = scale
+                el.frame = CGRect(x: 0, y: (size.height - iconSide * 1.15) / 2, width: iconSide * 1.1, height: iconSide * 1.15)
+                addSublayer(el)
             }
 
             block.frame = CGRect(x: iconSide + gap, y: 0, width: textSize.width + padX * 2, height: size.height)
@@ -113,6 +122,9 @@ final class LyricsView: NSView {
 
     private var layers: [Int: WordLayer] = [:]
     private let stage = CALayer()
+    /// Shown when no words are on screen (intros, solos, breaks), so it's never empty.
+    private let note = CALayer()
+    private var noteColourStep = Int.min
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -123,6 +135,16 @@ final class LyricsView: NSView {
         stage.sublayerTransform = p
         stage.frame = bounds
         layer?.addSublayer(stage)
+
+        if let img = NSImage(systemSymbolName: "music.note", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 200, weight: .bold)) {
+            let mask = CALayer()
+            mask.contents = img.layerContents(forContentsScale: 2)
+            mask.contentsGravity = .resizeAspect
+            note.mask = mask
+        }
+        note.opacity = 0
+        layer?.addSublayer(note)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -137,6 +159,27 @@ final class LyricsView: NSView {
         let scale = window?.backingScaleFactor ?? 2
         let h = bounds.height
         let wanted = Set(words.map(\.index))
+
+        // Music note in the gaps: album colour (cycling like the words), fades in and out.
+        let side = h * 0.26
+        note.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        note.mask?.frame = note.bounds
+        note.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        let noteStep = Int((time / WordStyler.colourPeriod).rounded(.down))
+        if noteStep != noteColourStep {
+            noteColourStep = noteStep
+            let c = WordStyler.colour(forWordIndex: 0, time: time, palette: palette)
+            note.backgroundColor = CGColor(red: CGFloat(c.r), green: CGFloat(c.g), blue: CGFloat(c.b), alpha: 1)
+        }
+        let showNote: Float = words.isEmpty ? 0.9 : 0
+        if note.opacity != showNote {
+            let f = CABasicAnimation(keyPath: "opacity")
+            f.fromValue = note.presentation()?.opacity ?? note.opacity
+            f.toValue = showNote
+            f.duration = 0.35
+            note.add(f, forKey: "fade")
+            note.opacity = showNote
+        }
 
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.28)
@@ -195,11 +238,20 @@ final class LyricsView: NSView {
     }
 
     /// Beat pulse: every visible word bumps, the newest most; big hits bump harder.
-    func thump(big: Bool) {
+    func thump(big: Bool, intensity: Float = 1) {
+        if note.opacity > 0 {
+            let n = CAKeyframeAnimation(keyPath: "transform.scale")
+            let amount = (big ? 0.22 : 0.12) * CGFloat(0.45 + 0.55 * intensity)
+            n.values = [1, 1 + amount, 1]
+            n.keyTimes = [0, 0.18, 1]
+            n.duration = big ? 0.42 : 0.3
+            note.add(n, forKey: "thump")
+        }
+
         let newestIndex = layers.keys.max()
         for (i, l) in layers {
             let base = l.value(forKeyPath: "transform.scale") as? CGFloat ?? 1
-            let amount: CGFloat = (i == newestIndex ? 0.14 : 0.06) * (big ? 1.6 : 1)
+            let amount: CGFloat = (i == newestIndex ? 0.14 : 0.06) * (big ? 1.6 : 1) * CGFloat(0.45 + 0.55 * intensity)
             let a = CAKeyframeAnimation(keyPath: "transform.scale")
             a.values = [base, base * (1 + amount), base]
             a.keyTimes = [0, 0.18, 1]

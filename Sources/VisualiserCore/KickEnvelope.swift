@@ -41,6 +41,8 @@ public struct VisualAnimator: Sendable {
     static let maxTilt: Float = 0.025
 
     public let beatDecay: Double
+    /// 0 = soft (slow songs: gentler, longer pulse, no glitch), 1 = energetic. See MoodTracker.
+    public var intensity: Float = 1
     private var lastBeat: BeatEvent?
     private var serial = 0
     private var flowBase = 0.0
@@ -72,9 +74,10 @@ public struct VisualAnimator: Sendable {
             big = b.isBigHit
             strength = max(b.strength, 0.5)
         }
-        let kick = env * (big ? 1 : 0.6) * strength
+        let i = min(max(intensity, 0), 1)
+        let kick = env * (big ? 1 : 0.6) * strength * (0.3 + 0.7 * i)
 
-        var glitch: Float = big ? env : 0
+        var glitch: Float = (big && i > 0.55) ? env : 0
         if glitch < 0.08 { glitch = 0 }
 
         let l = levels ?? BandLevels(bass: 0, mid: 0, treble: 0)
@@ -88,25 +91,28 @@ public struct VisualAnimator: Sendable {
             glitchAmount: glitch,
             slicesVisible: big && glitch > 0.35,
             beatSerial: serial,
-            tilt: direction * Self.maxTilt * kick,
+            tilt: direction * Self.maxTilt * kick * i,
             colourFlow: flow
         )
     }
 
-    /// 0 → 1 eased rise over `attack`, then (1 − p)³ decay over `beatDecay`.
+    /// Soft songs let each pulse linger up to ~1.9× longer.
+    private var decay: Double { beatDecay * (1 + 0.9 * Double(1 - min(max(intensity, 0), 1))) }
+
+    /// 0 → 1 eased rise over `attack`, then (1 − p)³ decay over `decay`.
     private func envelope(_ dt: Double) -> Float {
         guard dt >= 0 else { return 0 }
         if dt < Self.attack {
             let x = dt / Self.attack
             return Float(1 - (1 - x) * (1 - x))
         }
-        let p = min((dt - Self.attack) / beatDecay, 1)
+        let p = min((dt - Self.attack) / decay, 1)
         return Float(pow(1 - p, 3))
     }
 
     /// Smoothstep 0 → 1 across the whole beat (attack + decay); drives the colour push.
     private func progress(since b: BeatEvent, at t: Double) -> Double {
-        let x = min(max((t - b.time) / (Self.attack + beatDecay), 0), 1)
+        let x = min(max((t - b.time) / (Self.attack + decay), 0), 1)
         return x * x * (3 - 2 * x)
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import VisualiserCore
 
 /// Status item and its menu. The owner rebuilds it whenever its contents change.
 final class MenuBarController: NSObject, NSMenuDelegate {
@@ -8,6 +9,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         var selectedScreen: UInt32?
         var syncInfo = ""
         var launchAtLogin = false
+        var animationStyle: AnimationStyle = .auto
     }
 
     var onToggle: () -> Void = {}
@@ -15,6 +17,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     var onSync: (Double?) -> Void = { _ in } // nil = reset
     var onLaunchAtLogin: (Bool) -> Void = { _ in }
     var onQuit: () -> Void = {}
+    var onCommand: (NowPlayingService.Command) -> Void = { _ in }
+    var onAnimationStyle: (AnimationStyle) -> Void = { _ in }
     var model: () -> Model = { Model() }
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -36,6 +40,23 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         start.keyEquivalent = "v"
         start.keyEquivalentModifierMask = [.control, .option]
         menu.addItem(start)
+
+        menu.addItem(.separator())
+        menu.addItem(item("Play / Pause", #selector(playPause)))
+        menu.addItem(item("Next track", #selector(nextTrack)))
+        menu.addItem(item("Previous track", #selector(previousTrack)))
+        menu.addItem(.separator())
+
+        let anim = NSMenu()
+        for (style, title) in [(AnimationStyle.auto, "Auto (match the song)"), (.soft, "Soft"), (.energetic, "Energetic")] {
+            let i = item(title, #selector(chooseAnimation(_:)))
+            i.representedObject = style.rawValue
+            i.state = style == m.animationStyle ? .on : .off
+            anim.addItem(i)
+        }
+        let animParent = NSMenuItem(title: "Animation", action: nil, keyEquivalent: "")
+        animParent.submenu = anim
+        menu.addItem(animParent)
 
         if m.screens.count > 1 {
             let sub = NSMenu()
@@ -83,4 +104,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func resetSync() { onSync(nil) }
     @objc private func toggleLogin() { onLaunchAtLogin(!model().launchAtLogin) }
     @objc private func quit() { onQuit() }
+    @objc private func playPause() { onCommand(.playPause) }
+    @objc private func nextTrack() { onCommand(.next) }
+    @objc private func previousTrack() { onCommand(.previous) }
+    @objc private func chooseAnimation(_ sender: NSMenuItem) {
+        if let raw = sender.representedObject as? String, let s = AnimationStyle(rawValue: raw) { onAnimationStyle(s) }
+    }
 }

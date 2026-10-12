@@ -1,3 +1,4 @@
+import CoreImage
 import MetalKit
 import QuartzCore
 import VisualiserCore
@@ -42,6 +43,8 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private let sampler: MTLSamplerState
     private let loader: MTKTextureLoader
     private var cover: MTLTexture?
+    private var blurredCover: MTLTexture?
+    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
     init?(view: MTKView) {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { return nil }
@@ -76,8 +79,11 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         cover = try? loader.newTexture(cgImage: image, options: [
             .SRGB: false,
             .origin: MTKTextureLoader.Origin.topLeft,
-            .generateMipmaps: true, // lyrics background samples a low mip as a cheap blur
+            .generateMipmaps: true,
         ])
+        if let b = Self.gaussianBlur(image, context: ciContext) {
+            blurredCover = try? loader.newTexture(cgImage: b, options: [.SRGB: false, .origin: MTKTextureLoader.Origin.topLeft])
+        }
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
@@ -108,6 +114,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         enc.setRenderPipelineState(pipeline)
         enc.setFragmentBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 0)
         enc.setFragmentTexture(cover, index: 0)
+        enc.setFragmentTexture(blurredCover ?? cover, index: 1)
         enc.setFragmentSamplerState(sampler, index: 0)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         enc.endEncoding()
@@ -120,6 +127,17 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         }
         cmd.present(drawable)
         cmd.commit()
+    }
+
+    /// A heavy, smooth Gaussian blur of the cover for the lyrics background (once per track).
+    static func gaussianBlur(_ image: CGImage, context: CIContext) -> CGImage? {
+        let input = CIImage(cgImage: image)
+        let side = CGFloat(min(image.width, image.height))
+        guard let f = CIFilter(name: "CIGaussianBlur") else { return nil }
+        f.setValue(input.clampedToExtent(), forKey: kCIInputImageKey)   // no dark fringe at the edges
+        f.setValue(side * 0.045, forKey: kCIInputRadiusKey)
+        guard let out = f.outputImage?.cropped(to: input.extent) else { return nil }
+        return context.createCGImage(out, from: input.extent)
     }
 
     /// Debug: called once with the next rendered frame (needs `framebufferOnly = false`).
