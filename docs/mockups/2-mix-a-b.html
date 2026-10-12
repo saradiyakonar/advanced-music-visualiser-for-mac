@@ -1,0 +1,85 @@
+<h2>Mixing pulse-and-glow with glitch: how much glitch?</h2>
+<p class="subtitle">Both run on the same fake beat (100 BPM). Every 4th beat is a "big hit", standing in for a drop or a loud kick in a real song.</p>
+
+<style>
+  .card-image { padding: 0 !important; display: block !important; }
+  .stage { position: relative; width: 100%; box-sizing: border-box; height: 340px; background: #05030a; border-radius: 10px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .cover { flex: none; width: 150px; height: 150px; border-radius: 6px; position: relative; z-index: 2;
+    background:
+      radial-gradient(circle at 30% 30%, #ff3fd1 0 18%, transparent 19%),
+      radial-gradient(circle at 70% 65%, #5b4bff 0 26%, transparent 27%),
+      linear-gradient(135deg, #1a0633, #3a0a5e 50%, #0b1b4a); }
+  .cover::after { content: "STAND-IN COVER"; position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font: 600 9px/1 system-ui; letter-spacing: .12em; color: rgba(255,255,255,.7); }
+  .glow { position: absolute; width: 150px; height: 150px; border-radius: 30px; background: #ff3fd1; filter: blur(44px); opacity: .5; z-index: 1; }
+  .frame { position: absolute; inset: 16px; border: 2px solid #c13cff; border-radius: 12px; box-shadow: 0 0 18px #c13cff, inset 0 0 18px #c13cff; opacity: .4; }
+  .layer { position: absolute; width: 150px; height: 150px; border-radius: 6px; mix-blend-mode: screen; opacity: 0; z-index: 3; }
+  .lr { background: linear-gradient(135deg,#ff004c55,#ff004c99); }
+  .lc { background: linear-gradient(135deg,#00e5ff55,#00e5ff99); }
+  .slice { position: absolute; left: calc(50% - 75px); width: 150px; height: 14px; z-index: 4; opacity: 0;
+    background: linear-gradient(90deg,#ff3fd1,#5b4bff,#00e5ff); mix-blend-mode: screen; }
+  .tag { position: absolute; top: 26px; left: 28px; z-index: 5; font: 600 11px/1 system-ui; letter-spacing: .1em; color: #fff; opacity: 0; }
+</style>
+
+<div class="cards">
+  <div class="card" data-choice="glitch-on-drops" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="stage" data-mode="drops"></div></div>
+    <div class="card-body">
+      <h3>1. Glow every beat, glitch only on big hits</h3>
+      <p>Mostly calm pulse and glow. The glitch is saved for drops and heavy kicks, so it feels like an event when it happens.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="glitch-every-beat" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="stage" data-mode="every"></div></div>
+    <div class="card-body">
+      <h3>2. Light glitch every beat, heavy on big hits</h3>
+      <p>Every beat gets a small colour split along with the pulse, and big hits glitch hard. Busier, closer to the Instagram post.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const bpm = 100, beatMs = 60000 / bpm, t0 = performance.now();
+  const stages = [...document.querySelectorAll('.stage')].map(st => {
+    st.innerHTML = '<div class="frame"></div><div class="glow"></div><div class="cover"></div>' +
+      '<div class="layer lr"></div><div class="layer lc"></div><div class="slice"></div><div class="slice"></div><div class="tag">BIG HIT</div>';
+    const q = s => st.querySelector(s);
+    return { mode: st.dataset.mode, frame: q('.frame'), glow: q('.glow'), cover: q('.cover'),
+      lr: q('.lr'), lc: q('.lc'), slices: st.querySelectorAll('.slice'), tag: q('.tag') };
+  });
+
+  function frame(now) {
+    const t = now - t0;
+    const beatPos = (t % beatMs) / beatMs;
+    const beatIndex = Math.floor(t / beatMs);
+    const big = beatIndex % 4 === 0;
+    const env = Math.pow(1 - beatPos, 4);
+    const kick = env * (big ? 1 : 0.6);
+
+    for (const s of stages) {
+      s.cover.style.transform = `scale(${1 + kick * 0.18})`;
+      s.glow.style.transform = `scale(${1.2 + kick * 1.4})`;
+      s.glow.style.opacity = 0.35 + kick * 0.6;
+      s.frame.style.opacity = 0.25 + kick * 0.75;
+
+      let g = 0;
+      if (s.mode === 'drops') g = big ? env : 0;
+      else g = big ? env : env * 0.35;
+      g = g > 0.08 ? g : 0;
+      const off = g * 16;
+      s.lr.style.opacity = g; s.lr.style.transform = `translate(${-off}px, ${off * 0.3}px) scale(${1 + kick * 0.18})`;
+      s.lc.style.opacity = g; s.lc.style.transform = `translate(${off}px, ${-off * 0.3}px) scale(${1 + kick * 0.18})`;
+      s.slices.forEach((el, i) => {
+        const on = big && g > 0.35;
+        el.style.opacity = on ? 0.85 : 0;
+        el.style.top = `calc(50% - 75px + ${((beatIndex * 37 + i * 61) % 130)}px)`;
+        el.style.transform = `translateX(${(i ? -1 : 1) * g * 34}px)`;
+      });
+      s.tag.style.opacity = big ? env : 0;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>

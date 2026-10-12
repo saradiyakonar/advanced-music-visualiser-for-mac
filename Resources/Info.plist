@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>AlbumVisualiser</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.saradiya.albumvisualiser</string>
+	<key>CFBundleName</key>
+	<string>Album Visualiser</string>
+	<key>CFBundleDisplayName</key>
+	<string>Album Visualiser</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.2</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Album Visualiser listens to the music playing on your Mac to sync the visuals to the beat.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Album Visualiser asks Spotify and Music what song is playing so it can show the album cover.</string>
+</dict>
+</plist>

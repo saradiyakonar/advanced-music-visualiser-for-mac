@@ -1,0 +1,87 @@
+<h2>Where should the song title go?</h2>
+<p class="subtitle">Same pulse and glow as before (glitch on big hits only). The song name here is made up. Click the one you like.</p>
+
+<style>
+  .card-image { padding: 0 !important; display: block !important; }
+  .stage { position: relative; width: 100%; box-sizing: border-box; height: 340px; background: #05030a; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .wrap { position: relative; display: flex; align-items: center; justify-content: center; width: 150px; height: 150px; }
+  .cover { flex: none; width: 130px; height: 130px; border-radius: 6px; position: relative; z-index: 2;
+    background:
+      radial-gradient(circle at 30% 30%, #ff3fd1 0 18%, transparent 19%),
+      radial-gradient(circle at 70% 65%, #5b4bff 0 26%, transparent 27%),
+      linear-gradient(135deg, #1a0633, #3a0a5e 50%, #0b1b4a); }
+  .glow { position: absolute; width: 130px; height: 130px; border-radius: 30px; background: #ff3fd1; filter: blur(44px); opacity: .5; z-index: 1; }
+  .frame { position: absolute; inset: 14px; border: 2px solid #c13cff; border-radius: 12px; box-shadow: 0 0 18px #c13cff, inset 0 0 18px #c13cff; opacity: .4; pointer-events: none; }
+  .title { font: 700 17px/1.2 system-ui; color: #fff; text-shadow: 0 0 12px #ff3fd1; letter-spacing: .01em; }
+  .artist { font: 500 12px/1.3 system-ui; color: rgba(255,255,255,.65); }
+  .below { margin-top: 26px; text-align: center; z-index: 3; }
+  .corner { position: absolute; left: 30px; bottom: 28px; z-index: 3; text-align: left; }
+  .corner .title { font-size: 13px; }
+  .corner .artist { font-size: 10px; }
+  .pop { position: absolute; bottom: 40px; left: 0; right: 0; text-align: center; z-index: 3; transition: opacity .8s, transform .8s; }
+  .note { position: absolute; top: 24px; right: 28px; font: 600 9px/1 system-ui; letter-spacing: .1em; color: rgba(255,255,255,.45); z-index: 3; }
+</style>
+
+<div class="cards">
+  <div class="card" data-choice="below" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="stage">
+      <div class="frame"></div>
+      <div class="wrap"><div class="glow"></div><div class="cover"></div></div>
+      <div class="below"><div class="title">Neon Hours</div><div class="artist">Placeholder Artist</div></div>
+    </div></div>
+    <div class="card-body">
+      <h3>A. Under the cover, always on</h3>
+      <p>Title and artist sit centred below the cover, glowing gently with the beat. Always readable.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="corner" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="stage">
+      <div class="frame"></div>
+      <div class="wrap"><div class="glow"></div><div class="cover"></div></div>
+      <div class="corner"><div class="title">Neon Hours</div><div class="artist">Placeholder Artist</div></div>
+    </div></div>
+    <div class="card-body">
+      <h3>B. Small in the corner</h3>
+      <p>Quiet text in the bottom-left corner, like a TV channel tag. Keeps the centre all about the cover.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="popup" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="stage">
+      <div class="frame"></div>
+      <div class="note" id="noteC">NEW SONG</div>
+      <div class="wrap"><div class="glow"></div><div class="cover"></div></div>
+      <div class="pop" id="popC"><div class="title">Neon Hours</div><div class="artist">Placeholder Artist</div></div>
+    </div></div>
+    <div class="card-body">
+      <h3>C. Shows when the song changes, then fades</h3>
+      <p>The title appears for a few seconds at the start of each song, then fades away so only the visual is left.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const bpm = 100, beatMs = 60000 / bpm, t0 = performance.now();
+  const covers = document.querySelectorAll('.cover'), glows = document.querySelectorAll('.glow'), frames = document.querySelectorAll('.frame');
+  const titles = document.querySelectorAll('.below .title, .corner .title');
+  const pop = document.getElementById('popC'), note = document.getElementById('noteC');
+  function frame(now) {
+    const t = now - t0;
+    const beatPos = (t % beatMs) / beatMs, beatIndex = Math.floor(t / beatMs);
+    const kick = Math.pow(1 - beatPos, 4) * (beatIndex % 4 === 0 ? 1 : 0.6);
+    covers.forEach(c => c.style.transform = `scale(${1 + kick * 0.16})`);
+    glows.forEach(g => { g.style.transform = `scale(${1.2 + kick * 1.3})`; g.style.opacity = 0.35 + kick * 0.6; });
+    frames.forEach(f => f.style.opacity = 0.25 + kick * 0.75);
+    titles.forEach(el => el.style.textShadow = `0 0 ${8 + kick * 16}px #ff3fd1`);
+    // C: show for 3s out of every 8s cycle
+    const cyc = t % 8000, show = cyc < 3000;
+    pop.style.opacity = show ? 1 : 0;
+    pop.style.transform = show ? 'translateY(0)' : 'translateY(8px)';
+    note.style.opacity = show ? 1 : 0;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>

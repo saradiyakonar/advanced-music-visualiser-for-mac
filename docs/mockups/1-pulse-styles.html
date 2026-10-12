@@ -1,0 +1,136 @@
+<h2>How should the album cover pulse on the beat?</h2>
+<p class="subtitle">Each preview runs on a fake beat (about 100 BPM) with a stand-in cover. In the real app, the beat and colours come from the song. Click the one that feels closest; you can pick more than one.</p>
+
+<style>
+  .card-image { padding: 0 !important; display: block !important; } .stage { position: relative; width: 100%; min-width: 100%; box-sizing: border-box; height: 300px; background: #05030a; border-radius: 10px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .cover { flex: none; width: 140px; height: 140px; border-radius: 6px; position: relative; z-index: 2;
+    background:
+      radial-gradient(circle at 30% 30%, #ff3fd1 0 18%, transparent 19%),
+      radial-gradient(circle at 70% 65%, #5b4bff 0 26%, transparent 27%),
+      linear-gradient(135deg, #1a0633, #3a0a5e 50%, #0b1b4a);
+    will-change: transform, filter; }
+  .cover::after { content: "STAND-IN COVER"; position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font: 600 9px/1 system-ui; letter-spacing: .12em; color: rgba(255,255,255,.7); }
+
+  /* A: pulse + glow */
+  .a .glow { position: absolute; width: 140px; height: 140px; border-radius: 30px; background: #ff3fd1; filter: blur(40px); opacity: .5; z-index: 1; }
+  .a .frame { position: absolute; inset: 18px; border: 2px solid #c13cff; border-radius: 12px; box-shadow: 0 0 18px #c13cff, inset 0 0 18px #c13cff; opacity: .4; }
+
+  /* B: glitch split */
+  .b .layer { position: absolute; width: 140px; height: 140px; border-radius: 6px; mix-blend-mode: screen; opacity: 0; z-index: 3;
+    background: inherit; }
+  .b .r { background: linear-gradient(135deg,#ff004c55,#ff004c99); }
+  .b .c { background: linear-gradient(135deg,#00e5ff55,#00e5ff99); }
+  .b .slice { position: absolute; left: calc(50% - 70px); width: 140px; height: 14px; z-index: 4; opacity: 0;
+    background: linear-gradient(90deg,#ff3fd1,#5b4bff,#00e5ff); mix-blend-mode: screen; }
+
+  /* C: ring bars */
+  .c-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+</style>
+
+<div class="cards" data-multiselect>
+  <div class="card" data-choice="pulse-glow" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="stage a" id="stA">
+        <div class="frame" id="frA"></div>
+        <div class="glow" id="glA"></div>
+        <div class="cover" id="cvA"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Pulse and glow</h3>
+      <p>The cover thumps bigger on each kick, and a neon glow in its own colours blooms behind it. The screen-edge frame flashes too. Calm, clean, easy to watch for hours.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="glitch" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="stage b" id="stB">
+        <div class="cover" id="cvB"></div>
+        <div class="layer r" id="lrB"></div>
+        <div class="layer c" id="lcB"></div>
+        <div class="slice" id="s1B"></div>
+        <div class="slice" id="s2B"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. Glitch hit</h3>
+      <p>On each beat the cover splits into red and blue copies and slices jump sideways, like the Instagram post. High energy; louder drops glitch harder.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="ring-bars" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="stage c-stage" id="stC">
+        <canvas id="cnC"></canvas>
+        <div class="cover" id="cvC" style="border-radius:50%"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. Ring of bars</h3>
+      <p>A circle of frequency bars dances around the cover, bass on one side and treble on the other, while the cover pulses gently. The classic "music visualiser" look.</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px">These can also be mixed, for example A as the base look with B kicking in only on big drops.</p>
+
+<script>
+(function () {
+  const bpm = 100, beatMs = 60000 / bpm;
+  const t0 = performance.now();
+  const $ = id => document.getElementById(id);
+  const cv = $('cnC'), ctx = cv.getContext('2d');
+  const bars = 64, levels = new Array(bars).fill(0);
+
+  function frame(now) {
+    const t = now - t0;
+    const beatPos = (t % beatMs) / beatMs;          // 0..1 through each beat
+    const beatIndex = Math.floor(t / beatMs);
+    const big = beatIndex % 4 === 0;                 // stronger hit every bar
+    const kick = Math.pow(1 - beatPos, 4) * (big ? 1 : 0.6);
+
+    // A
+    $('cvA').style.transform = `scale(${1 + kick * 0.18})`;
+    $('glA').style.transform = `scale(${1.2 + kick * 1.4})`;
+    $('glA').style.opacity = 0.35 + kick * 0.6;
+    $('frA').style.opacity = 0.25 + kick * 0.75;
+
+    // B
+    const g = kick > 0.25 ? kick : 0;
+    const off = g * 14;
+    $('cvB').style.transform = `scale(${1 + kick * 0.06}) translateX(${(Math.random() - .5) * g * 6}px)`;
+    $('lrB').style.opacity = g; $('lrB').style.transform = `translate(${-off}px, ${off * 0.3}px)`;
+    $('lcB').style.opacity = g; $('lcB').style.transform = `translate(${off}px, ${-off * 0.3}px)`;
+    ['s1B', 's2B'].forEach((id, i) => {
+      const el = $(id);
+      el.style.opacity = g > 0.4 ? 0.8 : 0;
+      el.style.top = `calc(50% - 70px + ${((beatIndex * 37 + i * 61) % 120)}px)`;
+      el.style.transform = `translateX(${(i ? -1 : 1) * g * 30}px)`;
+    });
+
+    // C
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== w * 2) { cv.width = w * 2; cv.height = h * 2; }
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2, r = 78;
+    for (let i = 0; i < bars; i++) {
+      const band = i / bars;                          // 0 = bass, 1 = treble
+      const target = (1 - band) * kick * 1.1 + band * (0.25 + 0.35 * Math.abs(Math.sin(t / 90 + i))) * 0.8;
+      levels[i] += (target - levels[i]) * 0.3;
+      const len = 6 + levels[i] * 60;
+      const a = band * Math.PI * 2 - Math.PI / 2;
+      ctx.strokeStyle = `hsl(${290 - band * 90}, 100%, ${55 + levels[i] * 20}%)`;
+      ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      ctx.lineTo(cx + Math.cos(a) * (r + len), cy + Math.sin(a) * (r + len));
+      ctx.stroke();
+    }
+    $('cvC').style.transform = `scale(${1 + kick * 0.08})`;
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
