@@ -8,8 +8,8 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     static let coverHalf: Float = 0.25
 
     struct Uniforms {
-        var primary: SIMD4<Float>
-        var secondary: SIMD4<Float>
+        var colours: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>)
+        var colourCount: Float
         var resolution: SIMD2<Float>
         var time: Float
         var flow: Float
@@ -91,12 +91,13 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         let levels = levelsProvider?().map { smoother.update($0, dt: dt) }
         let f = animator.frame(at: now, paused: paused, levels: levels)
 
-        let p0 = palette[0], p1 = palette.count > 1 ? palette[1] : PaletteExtractor.complement(of: palette[0])
+        let pal = Array(palette.prefix(4))
+        func c(_ i: Int) -> SIMD4<Float> { let x = pal[min(i, pal.count - 1)]; return SIMD4(x.r, x.g, x.b, 1) }
         // Edge swell: the beat envelope (recovered from frameOpacity) plus some live bass.
         let edgeEnergy = min(1, max(0, (f.frameOpacity - 0.25) / 0.75) + 0.4 * (levels?.bass ?? 0))
         var u = Uniforms(
-            primary: SIMD4(p0.r, p0.g, p0.b, 1),
-            secondary: SIMD4(p1.r, p1.g, p1.b, 1),
+            colours: (c(0), c(1), c(2), c(3)),
+            colourCount: Float(pal.count),
             resolution: SIMD2(Float(view.drawableSize.width), Float(view.drawableSize.height)),
             time: Float(now.truncatingRemainder(dividingBy: 10_000)),
             flow: Float(f.colourFlow.truncatingRemainder(dividingBy: 1)),

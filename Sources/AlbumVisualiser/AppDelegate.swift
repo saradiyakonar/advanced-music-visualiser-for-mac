@@ -42,6 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.write("launched")
         // Debug: `--open` starts the visualiser straight away.
         if CommandLine.arguments.contains("--open") { c.startVisualiser() }
+        // Debug: `--reopen-test` opens, closes after 3 s, reopens after 1 s more.
+        if CommandLine.arguments.contains("--reopen-test") {
+            c.startVisualiser()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Log.write("TEST: closing"); c.stopVisualiser() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { Log.write("TEST: reopening"); c.startVisualiser() }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

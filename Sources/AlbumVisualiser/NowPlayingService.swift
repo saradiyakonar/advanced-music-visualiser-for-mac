@@ -54,6 +54,9 @@ final class NowPlayingService {
     private var rawOutput: [PlayerApp: String?] = [:]
 
     func start() {
+        // A fresh window needs the current track even if it hasn't changed since last time.
+        hasPublished = false
+        lastPublished = nil
         let center = DistributedNotificationCenter.default()
         for (_, name) in Self.notificationNames {
             observers.append(center.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
@@ -97,7 +100,9 @@ final class NowPlayingService {
             for app in PlayerApp.allCases {
                 if running.contains(app) {
                     let (info, raw) = Log.timed("AppleScript \(app.rawValue)", slowerThan: 400) { self.query(app) }
+                    let sample = info == nil ? nil : self.samplePosition(app)
                     results.append((app, info, raw, CACurrentMediaTime()))
+                    if let sample { DispatchQueue.main.async { self.positionSamples[app] = sample } }
                 } else {
                     results.append((app, nil, nil, CACurrentMediaTime()))
                 }
@@ -117,7 +122,10 @@ final class NowPlayingService {
         }
         let cur = arbiter.current
         if let cur, let out = rawOutput[cur.app] ?? nil, let pb = AppleScriptParser.playback(out, app: cur.app) {
-            clock = PlaybackClock(position: pb.position, hostTime: sampledAt[cur.app] ?? CACurrentMediaTime(),
+            // Prefer the precise, separately timed position sample when we have one.
+            let precise = positionSamples[cur.app]
+            clock = PlaybackClock(position: precise?.position ?? pb.position,
+                                  hostTime: precise?.hostTime ?? sampledAt[cur.app] ?? CACurrentMediaTime(),
                                   playing: cur.state == .playing)
             duration = pb.duration
         } else {
@@ -129,6 +137,26 @@ final class NowPlayingService {
             lastPublished = cur
             onChange?(cur)
         }
+    }
+
+    /// Position read on its own (one Apple event, ~30–60 ms) and stamped at the midpoint
+    /// of the call, which is much tighter than the end of the full ~250 ms track query.
+    private var positionScripts: [PlayerApp: NSAppleScript] = [:]
+    private var positionSamples: [PlayerApp: (position: Double, hostTime: Double)] = [:] // main only
+
+    private func samplePosition(_ app: PlayerApp) -> (position: Double, hostTime: Double)? {
+        let script = positionScripts[app] ?? {
+            let s = NSAppleScript(source: "tell application id \"\(app.bundleID)\" to return (player position as string)")!
+            positionScripts[app] = s
+            return s
+        }()
+        var error: NSDictionary?
+        let t0 = CACurrentMediaTime()
+        let result = script.executeAndReturnError(&error)
+        let t1 = CACurrentMediaTime()
+        guard error == nil, let str = result.stringValue,
+              let pos = Double(str.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")) else { return nil }
+        return (pos, (t0 + t1) / 2)
     }
 
     /// Runs on `scriptQueue` only.

@@ -7,8 +7,8 @@ enum Shaders {
     using namespace metal;
 
     struct Uniforms {
-        float4 primary;       // dominant album colour (~60% of the edge)
-        float4 secondary;     // second album colour (~40%)
+        float4 colours[4];    // album palette, most dominant first
+        float colourCount;
         float2 resolution;
         float time;           // seconds, wrapped
         float flow;           // 0..1, beat-pushed drift of the colour blend
@@ -51,12 +51,16 @@ enum Shaders {
              + 0.20 * sin(s * tau * 8.0 + t * 1.70 + 2.1);
     }
 
-    // Primary/secondary blend around the perimeter: primary covers ~60%.
+    // The album colours laid around the perimeter (s in 0..1, wraps), blending smoothly
+    // and drifting over time and with each beat. The dominant colour gets the widest band.
     float3 edgeColour(constant Uniforms& u, float s) {
-        float tau = 2.0 * M_PI_F;
-        float w = 0.5 + 0.5 * sin((s + u.flow) * tau * 2.0 + u.time * 0.25);
-        float k = smoothstep(0.35, 0.75, w);            // threshold shifted so primary dominates
-        return mix(u.primary.rgb, u.secondary.rgb, k);
+        int n = int(clamp(u.colourCount, 1.0, 4.0));
+        float x = fract(s * 2.0 + u.flow + u.time * 0.02) * float(n);
+        int i = int(floor(x)) % n;
+        int j = (i + 1) % n;
+        float f = fract(x);
+        f = smoothstep(0.25, 0.9, f);                    // hold each colour, then blend
+        return mix(u.colours[i].rgb, u.colours[j].rgb, f);
     }
 
     fragment float4 fmain(VOut in [[stage_in]],

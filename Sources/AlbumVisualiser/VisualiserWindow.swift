@@ -7,11 +7,14 @@ import VisualiserCore
 private final class KeyWindow: NSWindow {
     var onEscape: (() -> Void)?
     var onLyricsKey: (() -> Void)?
+    var onLyricsNudge: ((Double) -> Void)?
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { onEscape?() }
         else if event.charactersIgnoringModifiers?.lowercased() == "l", !event.isARepeat { onLyricsKey?() }
+        else if event.charactersIgnoringModifiers == "[" { onLyricsNudge?(0.1) }   // lyrics earlier
+        else if event.charactersIgnoringModifiers == "]" { onLyricsNudge?(-0.1) }  // lyrics later
         else { super.keyDown(with: event) }
     }
     override func cancelOperation(_ sender: Any?) { onEscape?() }
@@ -21,6 +24,7 @@ private final class KeyWindow: NSWindow {
 final class VisualiserWindowController {
     var onClose: (() -> Void)?
     var onToggleLyrics: (() -> Void)?
+    var onLyricsNudge: ((Double) -> Void)?
     private(set) var lyricsMode = false
     private let lyricsView: LyricsView
 
@@ -85,6 +89,7 @@ final class VisualiserWindowController {
         window.contentView = content
         window.onEscape = { [weak self] in self?.onClose?() }
         window.onLyricsKey = { [weak self] in self?.onToggleLyrics?() }
+        window.onLyricsNudge = { [weak self] d in self?.onLyricsNudge?(d) }
     }
 
     var isAvailable: Bool { renderer != nil }

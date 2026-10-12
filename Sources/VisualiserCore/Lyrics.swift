@@ -109,7 +109,7 @@ public struct LyricsTimeline: Sendable {
     public let lines: [LyricLine]
     public let words: [TimedWord]
     /// A line's words take at most this long per word, so short lines don't drag.
-    static let maxSecondsPerWord = 0.45
+    static let maxSecondsPerWord = 0.7
     static let lineFill = 0.9
 
     public init(lines: [LyricLine]) {

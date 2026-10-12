@@ -75,3 +75,37 @@ import Testing
         #expect(PaletteExtractor.cycleColors(from: PaletteExtractor.fallback).count == 6)
     }
 }
+
+@Suite struct RicherPaletteTests {
+    func image(_ color: (Int, Int) -> (UInt8, UInt8, UInt8)) -> CGImage {
+        let w = 64, h = 64
+        var px = [UInt8](repeating: 255, count: w * h * 4)
+        for y in 0..<h { for x in 0..<w {
+            let (r, g, b) = color(x, y); let i = (y * w + x) * 4
+            px[i] = r; px[i + 1] = g; px[i + 2] = b
+        } }
+        let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        return ctx.makeImage()!
+    }
+
+    @Test func singleHueCoverGetsShadesOfItsOwnColour() {
+        let p = PaletteExtractor.extract(from: image { _, _ in (220, 40, 40) })
+        #expect(p != PaletteExtractor.fallback)
+        #expect(p.count >= 3)
+        #expect(Set(p.map { "\($0.r),\($0.g),\($0.b)" }).count == p.count) // all different
+        for c in p { #expect(c.r >= c.g && c.r >= c.b) }                  // all still red-family
+    }
+
+    @Test func fourColourCoverGivesFour() {
+        let p = PaletteExtractor.extract(from: image { x, y in
+            switch (x < 32, y < 32) {
+            case (true, true): (255, 0, 0)
+            case (false, true): (0, 200, 0)
+            case (true, false): (0, 0, 255)
+            case (false, false): (255, 220, 0)
+            }
+        })
+        #expect(p.count == 4)
+    }
+}

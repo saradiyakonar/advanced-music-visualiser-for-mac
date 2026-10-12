@@ -48,6 +48,7 @@ final class AppController {
         }
         w.onClose = { [weak self] in self?.stopVisualiser() }
         w.onToggleLyrics = { [weak self] in self?.toggleLyrics() }
+        w.onLyricsNudge = { [weak self] d in self?.nudgeLyrics(d) }
         w.setLevelsProvider { [weak self] in self?.compensator.levels(at: CACurrentMediaTime()) }
         window = w
         output = OutputLatency.current()
@@ -65,7 +66,7 @@ final class AppController {
             }
             for beat in self.compensator.due(upTo: now) { w.register(beat) }
             if w.lyricsMode, let tl = self.timeline, let clock = self.nowPlaying.clock {
-                let pos = clock.position(at: now, outputDelay: self.compensator.delay)
+                let pos = clock.position(at: now, outputDelay: self.compensator.delay) + self.lyricsOffset
                 w.updateLyrics(words: tl.visible(at: pos), time: now)
             }
         }
@@ -127,6 +128,20 @@ final class AppController {
     }
 
     // MARK: - Lyrics
+
+    /// Manual lyric timing correction in seconds; positive shows words earlier. Saved.
+    private var lyricsOffset: Double {
+        get { defaults.double(forKey: "lyrics.offset") }
+        set { defaults.set(newValue, forKey: "lyrics.offset") }
+    }
+
+    private func nudgeLyrics(_ delta: Double) {
+        guard let w = window, w.lyricsMode else { return }
+        lyricsOffset = min(2, max(-2, ((lyricsOffset + delta) * 10).rounded() / 10))
+        let o = lyricsOffset
+        w.flash(o == 0 ? "Lyrics timing: default"
+                       : String(format: "Lyrics %.1f s %@", abs(o), o > 0 ? "earlier" : "later"), seconds: 1.2)
+    }
 
     private func toggleLyrics() {
         guard let w = window else { return }

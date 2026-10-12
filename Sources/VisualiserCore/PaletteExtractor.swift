@@ -28,7 +28,7 @@ public enum PaletteExtractor {
     private static let minValue: Float = 0.25
     private static let minBinShare: Float = 0.02 // a bin needs 2% of pixels to count
 
-    public static func extract(from image: CGImage, count: Int = 3) -> [RGB] {
+    public static func extract(from image: CGImage, count: Int = 4) -> [RGB] {
         var px = [UInt8](repeating: 0, count: side * side * 4)
         let drew: Bool = px.withUnsafeMutableBytes { buf in
             guard let ctx = CGContext(data: buf.baseAddress, width: side, height: side, bitsPerComponent: 8,
@@ -59,13 +59,29 @@ public enum PaletteExtractor {
         let ranked = (0..<hueBins)
             .filter { Float(counts[$0]) / total >= minBinShare }
             .sorted { Float(counts[$0]) * satSum[$0] > Float(counts[$1]) * satSum[$1] }
-        guard ranked.count >= 2 else { return fallback }
+        guard let top = ranked.first else { return fallback }
 
-        return ranked.prefix(count).map { bin in
+        func colour(_ bin: Int) -> (h: Float, s: Float) {
             var hue = atan2(hueY[bin], hueX[bin]) / (2 * .pi)
             if hue < 0 { hue += 1 }
-            let s = max(0.7, satSum[bin] / Float(counts[bin]))
-            return rgb(h: hue, s: s, v: 1)
+            return (hue, max(0.7, satSum[bin] / Float(counts[bin])))
+        }
+
+        // One strong colour: build shades of it rather than falling back to stock neon.
+        if ranked.count == 1 {
+            let (h, s) = colour(top)
+            let wrap = { (x: Float) in x < 0 ? x + 1 : (x >= 1 ? x - 1 : x) }
+            return Array([
+                rgb(h: h, s: s, v: 1),
+                rgb(h: wrap(h - 0.035), s: s * 0.85, v: 1),
+                rgb(h: wrap(h + 0.035), s: s, v: 0.75),
+                rgb(h: h, s: s * 0.5, v: 1),
+            ].prefix(max(count, 1)))
+        }
+
+        return ranked.prefix(count).map { bin in
+            let (h, s) = colour(bin)
+            return rgb(h: h, s: s, v: 1)
         }
     }
 
