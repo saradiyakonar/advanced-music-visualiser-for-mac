@@ -29,6 +29,8 @@ public struct VisualFrame: Equatable, Sendable {
     /// Position of the edge frame's colour flow (in palette cycles). Always increasing:
     /// time moves it slowly and each beat pushes it along smoothly.
     public var colourFlow: Double
+    public var impact: Float = 0
+    public var impactProgress: Float = 0
 }
 
 /// Turns beat events (and optional live band levels) into per-frame animation values.
@@ -45,6 +47,7 @@ public struct VisualAnimator: Sendable {
     public var intensity: Float = 1
     private var lastBeat: BeatEvent?
     private var serial = 0
+    private var lastImpact: BeatEvent?
     private var flowBase = 0.0
 
     public init(beatDecay: Double = 0.6) {
@@ -53,6 +56,11 @@ public struct VisualAnimator: Sendable {
 
     public mutating func register(_ e: BeatEvent) {
         if let b = lastBeat { flowBase += Self.flowPerBeat * progress(since: b, at: e.time) }
+        // Let each wave finish; dense kick patterns should not become a strobe.
+        if e.isBigHit, e.strength >= 0.65,
+           e.time - (lastImpact?.time ?? -.infinity) >= 1.4 {
+            lastImpact = e
+        }
         lastBeat = e
         serial += 1
     }
@@ -81,6 +89,10 @@ public struct VisualAnimator: Sendable {
         if glitch < 0.08 { glitch = 0 }
 
         let l = levels ?? BandLevels(bass: 0, mid: 0, treble: 0)
+        let impactAge = lastImpact.map { t - $0.time } ?? -1
+        let impactProgress = Float(min(1, max(0, impactAge / 1.15)))
+        let impact: Float = impactAge >= 0 && impactAge < 1.15
+            ? Float(min(1, impactAge / 0.055)) * pow(1 - impactProgress, 2) * (lastImpact?.strength ?? 0) * i : 0
         let direction: Float = serial % 2 == 1 ? 1 : -1
 
         return VisualFrame(
@@ -92,7 +104,7 @@ public struct VisualAnimator: Sendable {
             slicesVisible: big && glitch > 0.35,
             beatSerial: serial,
             tilt: direction * Self.maxTilt * kick * i,
-            colourFlow: flow
+            colourFlow: flow, impact: impact, impactProgress: impactProgress
         )
     }
 

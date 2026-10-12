@@ -134,6 +134,10 @@ final class LyricsView: NSView {
         p.m34 = -1 / 900
         stage.sublayerTransform = p
         stage.frame = bounds
+        stage.shadowColor = NSColor.black.cgColor
+        stage.shadowOpacity = 0.75
+        stage.shadowRadius = 18
+        stage.shadowOffset = CGSize(width: 0, height: -3)
         layer?.addSublayer(stage)
 
         if let img = NSImage(systemSymbolName: "music.note", accessibilityDescription: nil)?
@@ -206,7 +210,7 @@ final class LyricsView: NSView {
             layers[w.index] = l
             // Entrance: pop in from slightly larger.
             let pop = CABasicAnimation(keyPath: "transform.scale")
-            pop.fromValue = 1.3
+            pop.fromValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 1.3
             pop.toValue = 1
             pop.duration = 0.22
             pop.timingFunction = CAMediaTimingFunction(name: .easeOut)

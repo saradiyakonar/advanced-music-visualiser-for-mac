@@ -2,7 +2,8 @@
 
 A menu bar app for macOS. While a song plays in **Spotify** or **Apple Music**, it fills the screen with the album cover:
 - **Every beat:** the cover pulses and a neon glow blooms behind it.
-- **Big hits:** the cover glitches.
+- **Big hits:** an album-colored pressure wave expands across the screen, with a zoom and light bloom in both modes. Strong hits are spaced out so dense beats do not become a strobe.
+- **Lyrics:** recognizable cover details surround a soft, dark stage for kinetic words. The artwork drifts with the music and mouse.
 - **New song:** the title shows for a few seconds, then fades.
 
 Beats are detected live from the music's audio.
@@ -20,6 +21,8 @@ This builds `build/Album Visualiser.app` and copies it to `~/Applications`. Open
 ## Use
 
 - **⌃⌥V** or the menu's *Start visualiser* opens it full screen. **Esc** closes it, and the music keeps playing.
+- **L** switches between artwork and lyrics (when available). Move the mouse to reveal playback controls and choose **gentle**, **vivid**, or **intense** impact. **Space** pauses playback; **← / →** change tracks. **[ / ]** adjust lyric timing.
+- macOS **Reduce Motion** suppresses the shockwave, zoom, parallax, and lyric pops.
 - *Show on* (only with more than one display) picks the screen.
 - *Sync → Visuals earlier / later* shifts the visuals in 20 ms steps. Use it if they land before or after the beat you hear. The setting is saved per speaker. Bluetooth speakers start with a +120 ms correction.
 - *Launch at login* is on by default, so the shortcut always works.

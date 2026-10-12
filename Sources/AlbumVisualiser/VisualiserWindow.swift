@@ -5,6 +5,11 @@ import VisualiserCore
 
 /// Borderless window that can take key focus (needed for Esc and L).
 private final class KeyWindow: NSWindow {
+    var onPointer: ((NSPoint) -> Void)?
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .mouseMoved || event.type == .leftMouseDragged { onPointer?(event.locationInWindow) }
+        super.sendEvent(event)
+    }
     var onEscape: (() -> Void)?
     var onLyricsKey: (() -> Void)?
     var onLyricsNudge: ((Double) -> Void)?
@@ -22,6 +27,21 @@ private final class KeyWindow: NSWindow {
         else { super.keyDown(with: event) }
     }
     override func cancelOperation(_ sender: Any?) { onEscape?() }
+}
+
+private final class VisualControl: NSButton {
+    var perform: (() -> Void)?
+    init(_ title: String, action: @escaping () -> Void) {
+        super.init(frame: .zero)
+        self.title = title
+        self.perform = action
+        bezelStyle = .rounded
+        target = self
+        self.action = #selector(activate)
+        setAccessibilityLabel(title)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    @objc private func activate() { perform?() }
 }
 
 /// The full-screen visual: Metal view plus title and message overlays.
@@ -43,6 +63,11 @@ final class VisualiserWindowController {
     private let messageLabel = NSTextField(labelWithString: "")
     private var cursorTimer: Timer?
     private var titleHide: DispatchWorkItem?
+    private let controls = NSVisualEffectView()
+    private var controlsHide: DispatchWorkItem?
+    private var lyricsButton: VisualControl?
+    private var strengthButton: VisualControl?
+    private var effectStrength: Float = 1
 
     var animator: VisualAnimator {
         get { renderer?.animator ?? VisualAnimator() }
@@ -93,6 +118,42 @@ final class VisualiserWindowController {
             messageLabel.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             messageLabel.topAnchor.constraint(equalTo: content.centerYAnchor, constant: coverHalf * 1.25 + 20),
         ])
+        controls.material = .hudWindow
+        controls.blendingMode = .withinWindow
+        controls.state = .active
+        controls.wantsLayer = true
+        controls.layer?.cornerRadius = 16
+        controls.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(controls)
+        let mode = VisualControl("Lyrics · L") { [weak self] in self?.onToggleLyrics?() }
+        lyricsButton = mode
+        let strength = VisualControl("Impact: vivid") { [weak self] in self?.cycleStrength() }
+        strengthButton = strength
+        let buttons = [
+            VisualControl("Previous") { [weak self] in self?.onCommand?(.previous) },
+            VisualControl("Play / pause") { [weak self] in self?.onCommand?(.playPause) },
+            VisualControl("Next") { [weak self] in self?.onCommand?(.next) }, mode, strength,
+            VisualControl("Close · Esc") { [weak self] in self?.onClose?() }
+        ]
+        let stack = NSStackView(views: buttons)
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        controls.addSubview(stack)
+        NSLayoutConstraint.activate([
+            controls.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            controls.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -28),
+            stack.leadingAnchor.constraint(equalTo: controls.leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: controls.trailingAnchor, constant: -14),
+            stack.topAnchor.constraint(equalTo: controls.topAnchor, constant: 12),
+            stack.bottomAnchor.constraint(equalTo: controls.bottomAnchor, constant: -12)
+        ])
+        window.acceptsMouseMovedEvents = true
+        window.onPointer = { [weak self] point in
+            guard let self else { return }
+            self.renderer?.pointer = SIMD2(Float(point.x / max(1, content.bounds.width) - 0.5),
+                                          Float(0.5 - point.y / max(1, content.bounds.height)))
+            self.revealControls()
+        }
         window.contentView = content
         window.onEscape = { [weak self] in self?.onClose?() }
         window.onLyricsKey = { [weak self] in self?.onToggleLyrics?() }
@@ -107,6 +168,7 @@ final class VisualiserWindowController {
         NSApp.presentationOptions = [.hideDock, .hideMenuBar]
         window.makeKeyAndOrderFront(nil)
         metalView.isPaused = false
+        revealControls()
         NSCursor.setHiddenUntilMouseMoves(true)
         cursorTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
             NSCursor.setHiddenUntilMouseMoves(true)
@@ -114,6 +176,7 @@ final class VisualiserWindowController {
     }
 
     func close() {
+        controlsHide?.cancel()
         cursorTimer?.invalidate()
         cursorTimer = nil
         metalView.isPaused = true
@@ -163,7 +226,18 @@ final class VisualiserWindowController {
     /// Debug: saves the next rendered frame as a PNG.
     func snapshot(to url: URL, done: @escaping () -> Void = {}) {
         metalView.framebufferOnly = false
-        renderer?.snapshotHandler = { img in
+        renderer?.snapshotHandler = { [weak self] background in
+            var img = background
+            if let self, self.lyricsMode,
+               let ctx = CGContext(data: nil, width: background.width, height: background.height,
+                                   bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                ctx.draw(background, in: CGRect(x: 0, y: 0, width: background.width, height: background.height))
+                ctx.scaleBy(x: CGFloat(background.width) / self.lyricsView.bounds.width,
+                            y: CGFloat(background.height) / self.lyricsView.bounds.height)
+                (self.lyricsView.layer?.presentation() ?? self.lyricsView.layer)?.render(in: ctx)
+                img = ctx.makeImage() ?? background
+            }
             if let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) {
                 CGImageDestinationAddImage(dest, img, nil)
                 CGImageDestinationFinalize(dest)
@@ -194,7 +268,9 @@ final class VisualiserWindowController {
 
     func register(_ beat: BeatEvent) {
         renderer?.animator.register(beat)
-        if lyricsMode { lyricsView.thump(big: beat.isBigHit, intensity: intensity) }
+        if lyricsMode, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            lyricsView.thump(big: beat.isBigHit, intensity: intensity * effectStrength)
+        }
     }
 
     func setIntensity(_ i: Float) {
@@ -205,6 +281,7 @@ final class VisualiserWindowController {
     /// Lyrics replace the cover full screen; the edge glow stays.
     func setLyricsMode(_ on: Bool) {
         lyricsMode = on
+        lyricsButton?.title = on ? "Album art · L" : "Lyrics · L"
         renderer?.coverVisible = !on
         lyricsView.isHidden = !on
         if on {
@@ -227,6 +304,32 @@ final class VisualiserWindowController {
             guard self?.messageLabel.stringValue == text else { return }
             self?.showMessage(nil)
         }
+    }
+
+    private func cycleStrength() {
+        effectStrength = effectStrength == 1 ? 0.45 : (effectStrength == 0.45 ? 1.35 : 1)
+        renderer?.effectStrength = effectStrength
+        strengthButton?.title = effectStrength == 1 ? "Impact: vivid" : (effectStrength < 1 ? "Impact: gentle" : "Impact: intense")
+        revealControls()
+    }
+
+    private func revealControls() {
+        controlsHide?.cancel()
+        controls.isHidden = false
+        let hide = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            // Keep controls usable while the pointer rests over them or they have keyboard focus.
+            let point = self.window.mouseLocationOutsideOfEventStream
+            if self.controls.frame.contains(point) ||
+                (self.window.firstResponder as? NSView)?.isDescendant(of: self.controls) == true {
+                self.revealControls()
+            } else {
+                self.controls.isHidden = true
+                self.renderer?.pointer = .zero
+            }
+        }
+        controlsHide = hide
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: hide)
     }
 
     private func fade(_ views: [NSView], to alpha: CGFloat, duration: TimeInterval) {

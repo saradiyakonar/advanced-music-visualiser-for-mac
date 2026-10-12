@@ -76,8 +76,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let dir = snapDir, let shot = shots.first, pos >= shot.0 {
                 shots.removeFirst()
                 w.snapshotLyrics(to: URL(fileURLWithPath: dir).appendingPathComponent(shot.1))
-                w.snapshot(to: URL(fileURLWithPath: dir).appendingPathComponent("bg-" + shot.1))
-                if shots.isEmpty { NSApp.terminate(nil) }
+                w.snapshot(to: URL(fileURLWithPath: dir).appendingPathComponent("bg-" + shot.1)) {
+                    if shots.isEmpty { NSApp.terminate(nil) }
+                }
             }
         }
     }
@@ -88,6 +89,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let screen = NSScreen.main else { return }
         let w = VisualiserWindowController(screen: screen)
         w.onClose = { NSApp.terminate(nil) }
+        w.onToggleLyrics = { [weak w] in
+            guard let w else { return }; w.setLyricsMode(!w.lyricsMode)
+        }
         w.show()
         w.showTitle("Demo Beat", artist: "Album Visualiser")
         demoWindow = w
@@ -105,9 +109,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.register(BeatEvent(time: CACurrentMediaTime(), strength: 1, isBigHit: n % 4 == 0))
             if let dir = snapDir {
                 let url = { (name: String) in URL(fileURLWithPath: dir).appendingPathComponent(name) }
-                if n == 4 { w.snapshot(to: url("big-hit.png")) }
+                if n == 4 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { w.snapshot(to: url("big-hit.png")) }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) { w.snapshot(to: url("impact-wave.png")) }
+                }
                 if n == 5 {
-                    w.snapshot(to: url("normal-beat.png"))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { w.snapshot(to: url("normal-beat.png")) }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { w.snapshot(to: url("rest.png")) }
                 }
                 if n >= 7 { NSApp.terminate(nil) }

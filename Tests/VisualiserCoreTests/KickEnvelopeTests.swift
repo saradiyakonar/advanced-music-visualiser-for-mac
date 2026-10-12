@@ -115,3 +115,38 @@ import Testing
         #expect(down.bass < up.bass)
     }
 }
+
+@Suite struct ImpactEnvelopeTests {
+    @Test func onlyStrongBigHitsTriggerWaves() {
+        for beat in [BeatEvent(time: 1, strength: 1, isBigHit: false),
+                     BeatEvent(time: 1, strength: 0.5, isBigHit: true)] {
+            var animator = VisualAnimator()
+            animator.register(beat)
+            #expect(animator.frame(at: 1.1, paused: false).impact == 0)
+        }
+    }
+
+    @Test func waveSurvivesFollowingBeatsAndHasCooldown() {
+        var animator = VisualAnimator()
+        animator.register(BeatEvent(time: 1, strength: 1, isBigHit: true))
+        let peak = animator.frame(at: 1.06, paused: false)
+        #expect(peak.impact > 0.8)
+        animator.register(BeatEvent(time: 1.3, strength: 1, isBigHit: false))
+        animator.register(BeatEvent(time: 1.6, strength: 1, isBigHit: true))
+        let later = animator.frame(at: 1.7, paused: false)
+        #expect(later.impact > 0 && later.impact < peak.impact)
+        #expect(later.impactProgress > 0.6)
+        #expect(animator.frame(at: 2.2, paused: false).impact == 0)
+        animator.register(BeatEvent(time: 2.5, strength: 1, isBigHit: true))
+        #expect(animator.frame(at: 2.56, paused: false).impact > 0.8)
+    }
+
+    @Test func pausedSoftAndFutureHitsDoNotProduceImpact() {
+        var animator = VisualAnimator()
+        animator.register(BeatEvent(time: 1, strength: 1, isBigHit: true))
+        #expect(animator.frame(at: 0.9, paused: false).impact == 0)
+        #expect(animator.frame(at: 1.1, paused: true).impact == 0)
+        animator.intensity = 0
+        #expect(animator.frame(at: 1.1, paused: false).impact == 0)
+    }
+}

@@ -1,3 +1,4 @@
+import AppKit
 import CoreImage
 import MetalKit
 import QuartzCore
@@ -25,12 +26,19 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         var tilt: Float
         var coverHalf: Float
         var coverVisible: Float
+        var impact: Float
+        var impactProgress: Float
+        var pointer: SIMD2<Float>
     }
 
     var animator = VisualAnimator()
     var paused = false
     /// False in lyrics mode: only the background and edge glow are drawn.
     var coverVisible = true
+    var effectStrength: Float = 1
+    var pointer = SIMD2<Float>(repeating: 0)
+    private var smoothPointer = SIMD2<Float>(repeating: 0)
+    private var visualTime: Double = 0
     /// Live band levels, already delayed to match the speakers.
     var levelsProvider: (() -> BandLevels?)?
     private(set) var palette: [RGB] = PaletteExtractor.fallback
@@ -95,7 +103,12 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         let dt = min(0.1, now - (lastFrameTime ?? now))
         lastFrameTime = now
         let levels = levelsProvider?().map { smoother.update($0, dt: dt) }
-        let f = animator.frame(at: now, paused: paused, levels: levels)
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let still = paused || reduced
+        if !still { visualTime += dt }
+        smoothPointer += ((still ? .zero : pointer) - smoothPointer) * Float(1 - exp(-dt * 5))
+        let f = animator.frame(at: now, paused: still, levels: levels)
+        let impact = still ? 0 : f.impact * effectStrength
 
         let pal = Array(palette.prefix(4))
         func c(_ i: Int) -> SIMD4<Float> { let x = pal[min(i, pal.count - 1)]; return SIMD4(x.r, x.g, x.b, 1) }
@@ -105,12 +118,13 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
             colours: (c(0), c(1), c(2), c(3)),
             colourCount: Float(pal.count),
             resolution: SIMD2(Float(view.drawableSize.width), Float(view.drawableSize.height)),
-            time: Float(now.truncatingRemainder(dividingBy: 10_000)),
-            flow: Float(f.colourFlow.truncatingRemainder(dividingBy: 1)),
-            coverScale: f.coverScale, glowScale: f.glowScale, glowOpacity: f.glowOpacity,
-            edgeEnergy: paused ? 0.1 : edgeEnergy, glitch: f.glitchAmount, slices: f.slicesVisible ? 1 : 0,
+            time: Float(visualTime.truncatingRemainder(dividingBy: 10_000)),
+            flow: still ? 0 : Float(f.colourFlow.truncatingRemainder(dividingBy: 1)),
+            coverScale: still ? 1 : 1 + (f.coverScale - 1) * effectStrength + impact * 0.09, glowScale: f.glowScale, glowOpacity: f.glowOpacity,
+            edgeEnergy: still ? 0.1 : min(1, edgeEnergy * effectStrength + impact * 0.5), glitch: f.glitchAmount * effectStrength, slices: f.slicesVisible ? 1 : 0,
             serial: Float(f.beatSerial % 10_000), dim: paused ? 0.55 : 1, tilt: f.tilt,
-            coverHalf: Self.coverHalf, coverVisible: coverVisible ? 1 : 0)
+            coverHalf: Self.coverHalf, coverVisible: coverVisible ? 1 : 0,
+            impact: impact, impactProgress: f.impactProgress, pointer: smoothPointer)
         enc.setRenderPipelineState(pipeline)
         enc.setFragmentBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 0)
         enc.setFragmentTexture(cover, index: 0)

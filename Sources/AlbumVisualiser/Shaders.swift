@@ -23,6 +23,9 @@ enum Shaders {
         float tilt;
         float coverHalf;      // cover half-side as a fraction of the shorter dimension
         float coverVisible;   // 0 in lyrics mode
+        float impact;
+        float impactProgress;
+        float2 pointer;
     };
 
     struct VOut { float4 position [[position]]; };
@@ -78,22 +81,31 @@ enum Shaders {
 
         float3 col = float3(5.0, 3.0, 10.0) / 255.0;    // #05030a
 
-        // Lyrics mode: the album art blurred (a low mip level), filling the screen, slowly
-        // drifting and brightening on the beat, so the text never sits on blank black.
+        // Cover-fill preserves the artwork's proportions on landscape AND portrait displays.
+        // Sharp details live at the sides; a soft, dark centre leaves room for the words.
+        float2 artUV = p / max(res.x, res.y);
+        float zoom = 1.08 + 0.025 * sin(u.time * 0.12) + u.impact * 0.09;
+        artUV = artUV / zoom + 0.5;
+        artUV += 0.018 * float2(sin(u.time * 0.08), cos(u.time * 0.065)) + u.pointer * 0.018;
+        float3 softArt = blurred.sample(s, artUV).rgb;
+        float3 detailArt = cover.sample(s, artUV).rgb;
+        float centre = exp(-dot(p / (res * float2(0.32, 0.48)), p / (res * float2(0.32, 0.48))));
+        float vignette = 1.0 - 0.48 * length(p / (res * 0.5));
         if (u.coverVisible < 0.5) {
-            float aspect = res.x / res.y;
-            float zoom = 1.12 + 0.04 * sin(u.time * 0.07) + 0.05 * u.edgeEnergy;
-            float2 uv = (xy / res - 0.5);
-            uv.x *= aspect;                              // cover-fill: square art across a wide screen
-            uv = uv / (zoom * aspect) + 0.5;
-            uv += 0.03 * float2(sin(u.time * 0.05), cos(u.time * 0.043));
-            // The cover pre-blurred once per track with a true Gaussian (see MetalRenderer),
-            // so this is smooth with no grain; the dither hides banding in dark gradients.
-            float3 art = blurred.sample(s, uv).rgb;
-            art += (hash11(xy.x * 0.731 + xy.y * 12.13 + fract(u.time)) - 0.5) / 255.0 * 1.5;
-            float vignette = 1.0 - 0.4 * length(xy / res - 0.5);
-            col = art * (0.45 + 0.15 * u.edgeEnergy) * vignette * u.dim;
+            float detail = (1.0 - centre) * 0.68;
+            col = mix(softArt, detailArt, detail) * (0.64 - centre * 0.39) * vignette * u.dim;
+            col += softArt * u.impact * (0.28 - centre * 0.2);
+        } else {
+            col += softArt * (0.12 + 0.14 * u.impact) * vignette * u.dim;
         }
+
+        // An expanding pressure wave follows a big hit independently of subsequent kicks.
+        float radius = length(p / minDim);
+        float waveRadius = 0.15 + u.impactProgress * 1.5;
+        float wave = exp(-pow((radius - waveRadius) / (0.025 + u.impactProgress * 0.08), 2.0));
+        float halo = exp(-abs(radius - waveRadius) * 8.0);
+        float3 impactColour = mix(edgeColour(u, perim + 0.2), float3(1.0), 0.18);
+        col += impactColour * (wave * 0.7 + halo * 0.22) * u.impact * u.dim;
 
         // Glow behind the cover, blending the two album colours around it.
         float halfC = u.coverHalf * minDim * u.coverScale;
@@ -121,7 +133,8 @@ enum Shaders {
         // Album cover, tilted by the beat.
         if (u.coverVisible > 0.5) {
             float c = cos(-u.tilt), sn = sin(-u.tilt);
-            float2 pr = float2(c * p.x - sn * p.y, sn * p.x + c * p.y);
+            float2 cp = p - u.pointer * minDim * 0.012;
+            float2 pr = float2(c * cp.x - sn * cp.y, sn * cp.x + c * cp.y);
             float dCover = sdRoundRect(pr, float2(halfC), 0.015 * minDim);
             if (dCover < 1.0) {
                 float2 uv = pr / (2.0 * halfC) + 0.5;
