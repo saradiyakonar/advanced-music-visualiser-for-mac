@@ -81,6 +81,31 @@ final class NowPlayingService {
         observers.removeAll()
     }
 
+    enum Command {
+        case playPause, next, previous
+        var verb: String {
+            switch self {
+            case .playPause: "playpause"
+            case .next: "next track"
+            case .previous: "previous track"
+            }
+        }
+    }
+
+    /// Sends a playback command to the player in use (or whichever is running), off the
+    /// main thread, then refreshes so the visual follows the change.
+    func send(_ command: Command) {
+        let preferred = arbiter.current?.app
+        guard let app = preferred.flatMap({ Self.isRunning($0) ? $0 : nil }) ?? PlayerApp.allCases.first(where: Self.isRunning)
+        else { return }
+        scriptQueue.async { [weak self] in
+            var error: NSDictionary?
+            NSAppleScript(source: "tell application id \"\(app.bundleID)\" to \(command.verb)")?.executeAndReturnError(&error)
+            if let error { Log.write("\(app.rawValue) command \(command.verb) failed: \(error)") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { self?.refresh() }
+        }
+    }
+
     static func isRunning(_ app: PlayerApp) -> Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: app.bundleID).isEmpty
     }

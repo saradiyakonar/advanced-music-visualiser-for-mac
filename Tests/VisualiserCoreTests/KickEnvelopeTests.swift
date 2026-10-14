@@ -115,3 +115,76 @@ import Testing
         #expect(down.bass < up.bass)
     }
 }
+
+@Suite struct ImpactEnvelopeTests {
+    @Test func onlyStrongBigHitsTriggerWaves() {
+        for beat in [BeatEvent(time: 1, strength: 1, isBigHit: false),
+                     BeatEvent(time: 1, strength: 0.5, isBigHit: true)] {
+            var animator = VisualAnimator()
+            animator.register(beat)
+            #expect(animator.frame(at: 1.1, paused: false).impact == 0)
+        }
+    }
+
+    @Test func waveSurvivesFollowingBeatsAndHasCooldown() {
+        var animator = VisualAnimator()
+        animator.register(BeatEvent(time: 1, strength: 1, isBigHit: true))
+        let peak = animator.frame(at: 1.06, paused: false)
+        #expect(peak.impact > 0.8)
+        animator.register(BeatEvent(time: 1.3, strength: 1, isBigHit: false))
+        animator.register(BeatEvent(time: 1.6, strength: 1, isBigHit: true))
+        let later = animator.frame(at: 1.7, paused: false)
+        #expect(later.impact > 0 && later.impact < peak.impact)
+        #expect(later.impactProgress > 0.6)
+        #expect(animator.frame(at: 2.2, paused: false).impact == 0)
+        animator.register(BeatEvent(time: 2.5, strength: 1, isBigHit: true))
+        #expect(animator.frame(at: 2.56, paused: false).impact > 0.8)
+    }
+
+    @Test func pausedSoftAndFutureHitsDoNotProduceImpact() {
+        var animator = VisualAnimator()
+        animator.register(BeatEvent(time: 1, strength: 1, isBigHit: true))
+        #expect(animator.frame(at: 0.9, paused: false).impact == 0)
+        #expect(animator.frame(at: 1.1, paused: true).impact == 0)
+        animator.intensity = 0
+        #expect(animator.frame(at: 1.1, paused: false).impact == 0)
+    }
+}
+
+@Suite struct RhythmResponseTests {
+    @Test func quickeningTriggersDropAndStrongerPulsesBeforeMoodCatchesUp() {
+        var animator = VisualAnimator()
+        animator.intensity = 0.12
+        for time in [0.0, 0.8, 1.6, 2.4, 3.2, 4.0] {
+            animator.register(BeatEvent(time: time, strength: 1, isBigHit: false, energy: 0.8))
+        }
+        let slow = animator.frame(at: 4.06, paused: false)
+        animator.register(BeatEvent(time: 4.35, strength: 1, isBigHit: false, energy: 0.8))
+        #expect(animator.frame(at: 4.41, paused: false).drop == 0)
+        animator.register(BeatEvent(time: 4.7, strength: 1, isBigHit: false, energy: 0.8))
+        let fast = animator.frame(at: 4.76, paused: false)
+        #expect(fast.drop > 0.6)
+        #expect(fast.backgroundPulse > slow.backgroundPulse)
+        #expect(fast.coverScale > slow.coverScale)
+        #expect(fast.rhythmDrive > slow.rhythmDrive)
+        #expect(animator.frame(at: 8, paused: false).drop == 0)
+        #expect(animator.frame(at: 8, paused: false).rhythmDrive < 0.02)
+        #expect(animator.frame(at: 4.76, paused: true).backgroundPulse == 0)
+        animator.intensity = 0
+        #expect(animator.frame(at: 4.76, paused: false).drop == 0)
+        #expect(animator.frame(at: 4.76, paused: false).rhythmDrive == 0)
+    }
+
+    @Test func energyJumpTriggersDropButSteadyBeatsAndLongSilenceDoNot() {
+        var animator = VisualAnimator()
+        for n in 0..<6 {
+            animator.register(BeatEvent(time: Double(n) * 0.5, strength: 1, isBigHit: false, energy: 0.15))
+            #expect(animator.frame(at: Double(n) * 0.5 + 0.06, paused: false).drop == 0)
+        }
+        animator.register(BeatEvent(time: 3, strength: 1, isBigHit: false, energy: 0.9))
+        #expect(animator.frame(at: 3.06, paused: false).drop > 0.7)
+        animator.register(BeatEvent(time: 10, strength: 1, isBigHit: false, energy: 1))
+        #expect(animator.frame(at: 10.06, paused: false).drop == 0)
+        #expect(animator.frame(at: 10.06, paused: false).rhythmDrive == 0)
+    }
+}

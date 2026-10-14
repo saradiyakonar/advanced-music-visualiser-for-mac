@@ -143,3 +143,23 @@ import Testing
         #expect(WordStyler.colour(forWordIndex: 0, time: 0, palette: []) == PaletteExtractor.fallback[0])
     }
 }
+
+@Suite struct EmojiTests {
+    @Test func commonWordsGetEmoji() {
+        #expect(WordStyler.style(for: "party", index: 0).emoji == nil)
+        #expect(WordStyler.style(for: "Diamonds,", index: 1).emoji == "💎")
+        #expect(WordStyler.style(for: "goodbye!", index: 2).emoji == nil)
+        #expect(WordStyler.style(for: "the", index: 3).emoji == nil)
+    }
+
+    @Test func aWordGetsAnIconOrAnEmojiNotBoth() {
+        for word in WordStyler.emoji.keys {
+            let s = WordStyler.style(for: word, index: 0)
+            #expect(!(s.icon != nil && s.emoji != nil), "\(word)")
+        }
+    }
+
+    @Test func thereAreLotsOfThem() {
+        #expect(WordStyler.emoji.count >= 70)
+    }
+}

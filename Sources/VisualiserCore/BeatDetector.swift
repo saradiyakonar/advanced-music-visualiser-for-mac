@@ -6,6 +6,9 @@ public struct BandLevels: Sendable, Equatable {
     public var bass: Float
     public var mid: Float
     public var treble: Float
+    public init(bass: Float, mid: Float, treble: Float) {
+        self.bass = bass; self.mid = mid; self.treble = treble
+    }
 }
 
 /// Real-time beat detector: spectral-flux onsets weighted to the bass band, with an
@@ -201,7 +204,9 @@ public final class BeatDetector {
         recentBeats.append((c.time, c.bass))
 
         let strength = onsetPeak > 0 ? min(1, c.onset / onsetPeak) : 0
-        return BeatEvent(time: c.time, strength: strength, isBigHit: isBig)
+        // Keep quiet transients quiet even when they are the strongest onset in a passage.
+        let energy = min(1, max(0, (c.rms - 0.012) / 0.18))
+        return BeatEvent(time: c.time, strength: strength, isBigHit: isBig, energy: energy)
     }
 
     // MARK: - Helpers
