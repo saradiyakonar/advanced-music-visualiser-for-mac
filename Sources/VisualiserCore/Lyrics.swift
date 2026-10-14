@@ -223,9 +223,10 @@ public enum WordStyler {
         let h = UInt32(truncatingIfNeeded: (index &+ 1) &* 2_654_435_761)
         let weights: [WordStyle.Weight] = [.heavy, .bold, .semibold, .regular]
         let key = word.lowercased().filter(\.isLetter)
-        let icon = icons[key]
+        let hasScene = LyricScenePlanner.theme(for: word) != nil
+        let icon = hasScene ? nil : icons[key]
         return WordStyle(weight: weights[Int((h >> 7) % 4)], italic: (h >> 13) % 5 == 0,
-                         block: (h >> 3) % 10 < 3, icon: icon, emoji: icon == nil ? emoji[key] : nil)
+                         block: (h >> 3) % 10 < 3, icon: icon, emoji: icon == nil && !hasScene ? emoji[key] : nil)
     }
 
     public static func colour(forWordIndex i: Int, time: Double, palette: [RGB]) -> RGB {

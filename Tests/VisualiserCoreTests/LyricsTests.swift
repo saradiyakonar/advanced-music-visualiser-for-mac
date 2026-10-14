@@ -146,9 +146,9 @@ import Testing
 
 @Suite struct EmojiTests {
     @Test func commonWordsGetEmoji() {
-        #expect(WordStyler.style(for: "party", index: 0).emoji == "🥳")
+        #expect(WordStyler.style(for: "party", index: 0).emoji == nil)
         #expect(WordStyler.style(for: "Diamonds,", index: 1).emoji == "💎")
-        #expect(WordStyler.style(for: "goodbye!", index: 2).emoji == "👋")
+        #expect(WordStyler.style(for: "goodbye!", index: 2).emoji == nil)
         #expect(WordStyler.style(for: "the", index: 3).emoji == nil)
     }
 

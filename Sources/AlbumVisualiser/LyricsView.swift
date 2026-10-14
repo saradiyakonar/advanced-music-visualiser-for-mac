@@ -8,6 +8,7 @@ import VisualiserCore
 /// 3D tilt, colours from the album cycling over time.
 final class LyricsView: NSView {
     private final class WordLayer: CALayer {
+        let fontSize: CGFloat
         let word: TimedWord
         let wordStyle: WordStyle
         let block = CALayer()
@@ -17,6 +18,7 @@ final class LyricsView: NSView {
         var colourStep = Int.min
 
         init(word: TimedWord, fontSize: CGFloat, scale: CGFloat) {
+            self.fontSize = fontSize
             self.word = word
             wordStyle = WordStyler.style(for: word.text, index: word.index)
             super.init()
@@ -79,6 +81,7 @@ final class LyricsView: NSView {
 
         override init(layer: Any) {
             let l = layer as! WordLayer
+            fontSize = l.fontSize
             word = l.word
             wordStyle = l.wordStyle
             super.init(layer: layer)
@@ -89,9 +92,11 @@ final class LyricsView: NSView {
         func apply(colour: NSColor) {
             if wordStyle.block {
                 block.backgroundColor = colour.cgColor
-                setTextColour(.white)
+                let rgb = colour.usingColorSpace(.deviceRGB) ?? colour
+                let brightness = 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent + 0.0722 * rgb.blueComponent
+                setTextColour(brightness > 0.6 ? NSColor(white: 0.08, alpha: 1) : .white)
             } else {
-                setTextColour(colour)
+                setTextColour(colour.blended(withFraction: 0.28, of: .white) ?? colour)
             }
             tintIcon(colour)
         }
@@ -118,6 +123,12 @@ final class LyricsView: NSView {
             }
             icon.backgroundColor = c.cgColor
         }
+    }
+
+    var motion: Float = 0.75
+    func invalidateColours() {
+        noteColourStep = Int.min
+        layers.values.forEach { $0.colourStep = Int.min }
     }
 
     private var layers: [Int: WordLayer] = [:]
@@ -210,7 +221,7 @@ final class LyricsView: NSView {
             layers[w.index] = l
             // Entrance: pop in from slightly larger.
             let pop = CABasicAnimation(keyPath: "transform.scale")
-            pop.fromValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 1.3
+            pop.fromValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 1 + 0.12 * motion
             pop.toValue = 1
             pop.duration = 0.22
             pop.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -219,12 +230,16 @@ final class LyricsView: NSView {
 
         // Stack top to bottom, centred as a group.
         let gap = h * 0.02
-        let heights = words.indices.map { i in (layers[words[i].index]?.size.height ?? 0) * sizes[i] / newestSize }
+        let scales = words.indices.map { i -> CGFloat in
+            guard let l = layers[words[i].index] else { return 1 }
+            return min(sizes[i] / l.fontSize, bounds.width * 0.82 / max(1, l.size.width))
+        }
+        let heights = words.indices.map { i in (layers[words[i].index]?.size.height ?? 0) * scales[i] }
         var y = bounds.midY + (heights.reduce(0, +) + gap * CGFloat(max(words.count - 1, 0))) / 2
         let step = Int((time / WordStyler.colourPeriod).rounded(.down))
         for (i, w) in words.enumerated() {
             guard let l = layers[w.index] else { continue }
-            let s = sizes[i] / newestSize
+            let s = scales[i]
             let age = words.count - 1 - i
             y -= heights[i]
             l.position = CGPoint(x: bounds.midX, y: y + heights[i] / 2)
@@ -242,24 +257,24 @@ final class LyricsView: NSView {
     }
 
     /// Beat pulse: every visible word bumps, the newest most; big hits bump harder.
-    func thump(big: Bool, intensity: Float = 1) {
+    func thump(big: Bool, intensity: Float = 1, duration: Double = 0.4) {
         if note.opacity > 0 {
             let n = CAKeyframeAnimation(keyPath: "transform.scale")
-            let amount = (big ? 0.22 : 0.12) * CGFloat(0.45 + 0.55 * intensity)
+            let amount = (big ? 0.22 : 0.12) * CGFloat(intensity)
             n.values = [1, 1 + amount, 1]
             n.keyTimes = [0, 0.18, 1]
-            n.duration = big ? 0.42 : 0.3
+            n.duration = duration
             note.add(n, forKey: "thump")
         }
 
         let newestIndex = layers.keys.max()
         for (i, l) in layers {
             let base = l.value(forKeyPath: "transform.scale") as? CGFloat ?? 1
-            let amount: CGFloat = (i == newestIndex ? 0.14 : 0.06) * (big ? 1.6 : 1) * CGFloat(0.45 + 0.55 * intensity)
+            let amount: CGFloat = (i == newestIndex ? 0.14 : 0.06) * (big ? 1.6 : 1) * CGFloat(intensity)
             let a = CAKeyframeAnimation(keyPath: "transform.scale")
             a.values = [base, base * (1 + amount), base]
             a.keyTimes = [0, 0.18, 1]
-            a.duration = big ? 0.42 : 0.3
+            a.duration = duration
             a.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeInEaseOut)]
             l.add(a, forKey: "thump")
         }

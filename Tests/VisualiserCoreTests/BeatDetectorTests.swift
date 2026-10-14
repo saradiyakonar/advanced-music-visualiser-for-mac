@@ -140,3 +140,18 @@ enum Synth {
         }
     }
 }
+
+@Suite struct AudioEnergyTests {
+    @Test func quietPeaksRetainLowAbsoluteEnergy() {
+        let quiet = Synth.run(Synth.kickTrack(bpm: 120, seconds: 8, kickGain: 0.8, gain: 0.05).samples).events
+        let loud = Synth.run(Synth.kickTrack(bpm: 120, seconds: 8, kickGain: 0.8).samples).events
+        #expect(quiet.count > 8 && loud.count > 8)
+        let quietEnergy = quiet.map(\.energy).reduce(0, +) / Float(max(1, quiet.count))
+        let loudEnergy = loud.map(\.energy).reduce(0, +) / Float(max(1, loud.count))
+        #expect(quietEnergy < 0.1)
+        #expect(loudEnergy > quietEnergy + 0.5)
+        var mood = MoodTracker()
+        quiet.forEach { mood.register($0) }
+        #expect(mood.intensity(at: 8) < 0.15)
+    }
+}

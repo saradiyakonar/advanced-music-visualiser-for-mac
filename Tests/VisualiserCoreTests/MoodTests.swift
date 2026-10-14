@@ -31,8 +31,8 @@ import Testing
         #expect(m.intensity(at: 50) > 0.8)
     }
 
-    @Test func startsEnergeticBeforeItKnows() {
-        #expect(MoodTracker().intensity(at: 0) == 1)
+    @Test func startsGentlyBeforeItKnows() {
+        #expect(MoodTracker().intensity(at: 0) < 0.15)
     }
 
     @Test func styleOverridesDetection() {
@@ -79,5 +79,56 @@ import Testing
         let laterS = soft.frame(at: 1.5, paused: false).coverScale - 1
         let laterH = hard.frame(at: 1.5, paused: false).coverScale - 1
         #expect(laterS / peakS > laterH / peakH)          // decays more slowly, relatively
+    }
+}
+
+@Suite struct AdaptiveResponseTests {
+    @Test func quietFastMusicStaysGentle() {
+        var quiet = MoodTracker(), loud = MoodTracker()
+        for n in 0..<60 {
+            let t = Double(n) * 0.45
+            quiet.register(BeatEvent(time: t, strength: 1, isBigHit: false, energy: 0.08))
+            loud.register(BeatEvent(time: t, strength: 1, isBigHit: false, energy: 1))
+        }
+        #expect(quiet.intensity(at: 27) < 0.2)
+        #expect(loud.intensity(at: 27) > 0.8)
+    }
+
+    @Test func silenceAndNewTracksForgetOldTempo() {
+        var mood = MoodTracker()
+        for n in 0..<40 { mood.register(BeatEvent(time: Double(n) * 0.45, strength: 1, isBigHit: false)) }
+        #expect(mood.tempo(at: 18) != nil)
+        #expect(mood.tempo(at: 23) == nil)
+        #expect(mood.intensity(at: 25) < 0.1)
+        mood.style = .soft
+        mood.reset()
+        #expect(mood.bpm == nil)
+        #expect(mood.style == .soft)
+        #expect(mood.intensity(at: 26) == 0)
+    }
+
+    @Test func slowSongsHaveLessThanOnePercentZoomEvenWithFullBass() {
+        var animator = VisualAnimator()
+        animator.intensity = 0.08
+        animator.tempo = 70
+        animator.register(BeatEvent(time: 1, strength: 1, isBigHit: true))
+        let frame = animator.frame(at: 1.04, paused: false, levels: BandLevels(bass: 1, mid: 1, treble: 1))
+        #expect(frame.coverScale < 1.01)
+        #expect(frame.glitchAmount == 0)
+        #expect(frame.impact < 0.01)
+    }
+
+    @Test func tempoControlsPulseRelease() {
+        var slow = VisualAnimator(), fast = VisualAnimator()
+        slow.tempo = 65; fast.tempo = 150
+        let beat = BeatEvent(time: 1, strength: 1, isBigHit: false)
+        slow.register(beat); fast.register(beat)
+        #expect(slow.frame(at: 1.4, paused: false).coverScale > fast.frame(at: 1.4, paused: false).coverScale)
+    }
+
+    @Test func weakOnsetsAreNotForcedToHalfStrength() {
+        var animator = VisualAnimator()
+        animator.register(BeatEvent(time: 1, strength: 0.05, isBigHit: false, energy: 0.1))
+        #expect(animator.frame(at: 1.04, paused: false).coverScale < 1.005)
     }
 }

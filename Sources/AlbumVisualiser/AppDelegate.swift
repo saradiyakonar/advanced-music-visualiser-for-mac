@@ -58,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `--demo --lyrics`: made-up lines on the lyrics screen. With `--snapshot-dir`, saves frames and quits.
-    private func startLyricsDemo(_ w: VisualiserWindowController, args: [String]) {
+    private func startLyricsDemo(_ w: VisualiserWindowController, args: [String], bpm: Double, energy: Float) {
         let tl = LyricsTimeline(lines: [
             LyricLine(start: 0.5, end: 2.5, text: "See the neon"),
             LyricLine(start: 2.5, end: 4.5, text: "Party with diamonds tonight"),
@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var beat = 0
         demoTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { _ in
             let now = CACurrentMediaTime(), pos = now - start
-            if Int(pos / 0.6) > beat { beat = Int(pos / 0.6); w.register(BeatEvent(time: now, strength: 1, isBigHit: beat % 4 == 0)) }
+            if Int(pos * bpm / 60) > beat { beat = Int(pos * bpm / 60); w.register(BeatEvent(time: now, strength: 1, isBigHit: beat % 4 == 0, energy: energy)) }
             w.updateLyrics(words: tl.visible(at: pos), time: now)
             if let dir = snapDir, let shot = shots.first, pos >= shot.0 {
                 shots.removeFirst()
@@ -87,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// With `--snapshot-dir <dir>`, saves a few frames there and quits.
     private func startDemo() {
         guard let screen = NSScreen.main else { return }
-        let w = VisualiserWindowController(screen: screen)
+        let w = VisualiserWindowController(screen: screen, preferences: VisualPreferences(persistChanges: false))
         w.onClose = { NSApp.terminate(nil) }
         w.onToggleLyrics = { [weak w] in
             guard let w else { return }; w.setLyricsMode(!w.lyricsMode)
@@ -97,16 +97,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         demoWindow = w
 
         let args = CommandLine.arguments
+        func argument(_ name: String) -> String? {
+            args.firstIndex(of: name).flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
+        }
+        var settings = VisualSettings()
+        if let name = argument("--scene"), let scene = VisualScene(rawValue: name) { settings.scene = scene }
+        if args.contains("--maximal") { settings = .preset(.supernova) }
+        if let name = argument("--light-palette"), let palette = VisualPalette(rawValue: name) { settings.palette = palette }
+        if args.contains("--party") { settings.partyMode = true }
+        w.configure(settings)
+        let bpm = min(180, max(40, argument("--bpm").flatMap(Double.init) ?? 120))
+        let energy = min(1, max(0, argument("--energy").flatMap(Float.init) ?? 0.85))
+        var demoMood = MoodTracker()
+        for n in 0..<30 { demoMood.register(BeatEvent(time: Double(n) * 60 / bpm, strength: 1, isBigHit: false, energy: energy)) }
+        let automaticIntensity = demoMood.intensity(at: 30 * 60 / bpm)
+        w.setMusicalResponse(intensity: automaticIntensity, tempo: bpm)
+        w.onAnimationStyle = { [weak w] style in
+            w?.setMusicalResponse(intensity: style == .auto ? automaticIntensity : (style == .soft ? 0 : 1), tempo: bpm)
+        }
+        if args.contains("--studio") { w.showStudio() }
+        w.setLevelsProvider {
+            let phase = CACurrentMediaTime() * bpm / 60 * 2 * Double.pi
+            return BandLevels(bass: Float(0.5 + 0.45 * sin(phase)) * energy,
+                              mid: Float(0.4 + 0.3 * sin(phase * 0.5)) * energy,
+                              treble: Float(0.2 + 0.15 * cos(phase * 2)) * energy)
+        }
         // `--art <image file>`: use a real cover instead of the placeholder.
         if let i = args.firstIndex(of: "--art"), args.indices.contains(i + 1),
            let data = try? Data(contentsOf: URL(fileURLWithPath: args[i + 1])), let img = ArtworkLoader.decode(data) {
             w.setArtwork(img, palette: PaletteExtractor.extract(from: img))
         }
-        if args.contains("--lyrics") { return startLyricsDemo(w, args: args) }
+        if args.contains("--lyrics") { return startLyricsDemo(w, args: args, bpm: bpm, energy: energy) }
         let snapDir = args.firstIndex(of: "--snapshot-dir").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
         var n = 0
-        demoTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { _ in
-            w.register(BeatEvent(time: CACurrentMediaTime(), strength: 1, isBigHit: n % 4 == 0))
+        demoTimer = Timer.scheduledTimer(withTimeInterval: 60 / bpm, repeats: true) { _ in
+            w.register(BeatEvent(time: CACurrentMediaTime(), strength: 1, isBigHit: n % 4 == 0, energy: energy))
             if let dir = snapDir {
                 let url = { (name: String) in URL(fileURLWithPath: dir).appendingPathComponent(name) }
                 if n == 4 {

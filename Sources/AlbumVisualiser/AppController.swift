@@ -51,6 +51,8 @@ final class AppController {
         w.onToggleLyrics = { [weak self] in self?.toggleLyrics() }
         w.onLyricsNudge = { [weak self] d in self?.nudgeLyrics(d) }
         w.onCommand = { [weak self] c in self?.send(c) }
+        w.setAnimationStyle(animationStyle)
+        w.onAnimationStyle = { [weak self] in self?.animationStyle = $0 }
         w.setLevelsProvider { [weak self] in self?.compensator.levels(at: CACurrentMediaTime()) }
         window = w
         keepAwake.setVisualiserOpen(true)
@@ -69,12 +71,14 @@ final class AppController {
             }
             for beat in self.compensator.due(upTo: now) {
                 self.mood.register(beat)
+                w.setMusicalResponse(intensity: self.mood.intensity(at: now), tempo: self.mood.tempo(at: now))
                 w.register(beat)
             }
-            w.setIntensity(self.mood.intensity(at: now))
-            if w.lyricsMode, let tl = self.timeline, let clock = self.nowPlaying.clock {
+            w.setMusicalResponse(intensity: self.mood.intensity(at: now), tempo: self.mood.tempo(at: now))
+            if let clock = self.nowPlaying.clock {
                 let pos = clock.position(at: now, outputDelay: self.compensator.delay) + self.lyricsOffset
-                w.updateLyrics(words: tl.visible(at: pos), time: now)
+                w.updateScenePosition(pos, hostTime: now)
+                if let tl = self.timeline { w.updateLyrics(words: tl.visible(at: pos), time: now) }
             }
         }
     }
@@ -101,6 +105,8 @@ final class AppController {
         Log.write("now playing: \(track.map { "\($0.title) [\($0.app.rawValue), \($0.state)] id=\($0.id)" } ?? "none")")
         guard let track else {
             shownTrackID = nil
+            timeline = nil
+            w.setSceneLyrics(nil)
             w.setArtwork(nil, palette: [])
             w.setPaused(true)
             w.showMessage(Self.noMusicMessage)
@@ -113,8 +119,12 @@ final class AppController {
 
         if track.id != shownTrackID {
             shownTrackID = track.id
+            mood.reset()
+            w.resetMusicalResponse()
             timeline = nil
-            if lyricsWanted { loadLyrics(for: track, announceMissing: false) }
+            w.updateLyrics(words: [], time: CACurrentMediaTime())
+            w.setSceneLyrics(nil)
+            loadLyrics(for: track, announceMissing: false)
             w.showTitle(track.title, artist: track.artist)
             // The previous cover stays up until the new one has loaded.
             let t0 = CACurrentMediaTime()
@@ -150,6 +160,7 @@ final class AppController {
         set {
             defaults.set(newValue.rawValue, forKey: "animation.style")
             mood.style = newValue
+            window?.setAnimationStyle(newValue)
         }
     }
 
@@ -184,9 +195,10 @@ final class AppController {
     /// Shows lyrics for `track` if LRCLIB has them; otherwise the cover stays.
     private func loadLyrics(for track: TrackInfo, announceMissing: Bool) {
         lyrics.fetch(track, duration: nowPlaying.duration) { [weak self] tl in
-            guard let self, let w = self.window, self.lyricsWanted, self.nowPlaying.current?.id == track.id else { return }
+            guard let self, let w = self.window, self.nowPlaying.current?.id == track.id else { return }
             self.timeline = tl
-            w.setLyricsMode(tl != nil)
+            w.setSceneLyrics(tl)
+            w.setLyricsMode(self.lyricsWanted && tl != nil)
             if tl == nil {
                 if announceMissing {
                     self.lyricsWanted = false // nothing to show: L stays off
